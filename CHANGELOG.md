@@ -4,6 +4,41 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 
 ---
 
+## rtak-satmap-v1.1
+**Changed:** `rtak_satmap/`
+
+Sentinel-2 API imagery layer added alongside the existing RF satellite pipeline.
+
+**New: Sentinel-2 poller (`SentinelPoller` class in `satmap_pipeline.py`)**
+- Queries Element84 Earth Search STAC API (public, no account or API key required) for recent Sentinel-2 L2A scenes over the observer's area
+- Filters for cloud cover <20% (configurable), selects most recent scene from the past 7 days
+- Fetches only the True Color Image (TCI) band via GDAL `/vsicurl/` HTTP range requests — streams just the observer-area crop, not the full scene (~500 MB avoided)
+- Reprojects + tiles to XYZ format at zoom 5–13 (10 m native resolution)
+- Rotates a `sentinel-latest` symlink so the ATAK URL never changes between scenes
+- Poll interval: every 6 hours (configurable via `SENTINEL_POLL_HOURS`)
+
+**New tile server routes**
+- `GET /sentinel-latest/{z}/{x}/{y}.png` — serves Sentinel-2 tiles
+- `GET /sentinel-source.xml` — returns auto-filled ATAK map source XML for Sentinel-2 layer (returns 503 until first scene is available)
+- Status JSON at `GET /` now includes both RF and Sentinel-2 layer status
+
+**`setup_satmap.sh` additions**
+- `--sentinel-radius-km` (default 200): controls how much area to crop and tile
+- `--sentinel-cloud-max` (default 20): max acceptable cloud cover %
+- `--planet-key KEY`: Planet Labs API key slot (enables planet polling config)
+- `--no-sentinel`: RF-only mode, disables Sentinel-2 polling
+- Writes pre-filled `atak_sentinel_source.xml` to `/opt/rtak/satmap/`
+
+**Coverage comparison**
+
+| Layer | Resolution | Source | Update cycle | Auth |
+|---|---|---|---|---|
+| RF (NOAA/Meteor) | 4 km/px | 137 MHz receive | ~90 min | None |
+| Sentinel-2 | 10 m/px | ESA Copernicus API | ~6 h | None |
+| Planet (optional) | 0.5–3 m/px | Planet Labs API | ~24 h | API key |
+
+---
+
 ## rtak-satmap-v1
 **Added:** `rtak_satmap/`
 

@@ -24,6 +24,8 @@ LAT=""
 LON=""
 ALT=0
 TILE_PORT=8889
+PLANET_KEY=""
+NO_SENTINEL=0
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -34,7 +36,11 @@ while [[ $# -gt 0 ]]; do
         --lon) LON="$2"; shift 2 ;;
         --alt) ALT="$2"; shift 2 ;;
         --port) TILE_PORT="$2"; shift 2 ;;
-        *) echo "Unknown argument: $1"; echo "Usage: $0 --lat <deg> --lon <deg> [--alt <m>]"; exit 1 ;;
+        --planet-key) PLANET_KEY="$2"; shift 2 ;;
+        --no-sentinel) NO_SENTINEL=1; shift ;;
+        *) echo "Unknown argument: $1"
+           echo "Usage: $0 --lat <deg> --lon <deg> [--alt <m>] [--port N] [--planet-key KEY] [--no-sentinel]"
+           exit 1 ;;
     esac
 done
 
@@ -44,9 +50,11 @@ if [[ -z "$LAT" || -z "$LON" ]]; then
     exit 1
 fi
 
-echo "=== RTAK SatMap Setup ==="
+echo "=== RTAK SatMap Setup (v1.1) ==="
 echo "Observer: ${LAT}°N ${LON}°E alt=${ALT}m"
 echo "Tile port: $TILE_PORT"
+[[ -n "$PLANET_KEY" ]] && echo "Planet Labs API: configured" || echo "Planet Labs API: not configured (pass --planet-key to enable)"
+[[ "$NO_SENTINEL" -eq 1 ]] && echo "Sentinel-2: disabled (--no-sentinel)" || echo "Sentinel-2: enabled (Element84 STAC, no account needed)"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -143,7 +151,9 @@ ExecStart=$RTAK_HOME/venv/bin/python $RTAK_HOME/satmap_pipeline.py \
     --lat $LAT \
     --lon $LON \
     --alt $ALT \
-    --port $TILE_PORT
+    --port $TILE_PORT \
+    $([ -n "$PLANET_KEY" ] && echo "--planet-key $PLANET_KEY") \
+    $([ "$NO_SENTINEL" -eq 1 ] && echo "--no-sentinel")
 Restart=on-failure
 RestartSec=30
 StandardOutput=journal
@@ -174,7 +184,25 @@ cat > "$PREFILLED_XML" <<ATKXML
 </customMapSource>
 ATKXML
 chown "$RTAK_USER:$RTAK_USER" "$PREFILLED_XML"
-echo "  Pre-filled ATAK source XML: $PREFILLED_XML"
+echo "  Pre-filled RF ATAK source XML: $PREFILLED_XML"
+
+# Sentinel-2 pre-filled map source XML
+if [[ "$NO_SENTINEL" -eq 0 ]]; then
+    SENTINEL_XML="$SATMAP_DIR/atak_sentinel_source.xml"
+    cat > "$SENTINEL_XML" <<SXML
+<?xml version="1.0" encoding="UTF-8"?>
+<customMapSource>
+    <name>RTAK SatMap — Sentinel-2 (10m)</name>
+    <minZoom>5</minZoom>
+    <maxZoom>13</maxZoom>
+    <type>tms</type>
+    <url>http://${NODE_IP}:${TILE_PORT}/sentinel-latest/{z}/{x}/{y}.png</url>
+    <backgroundColor>#00000000</backgroundColor>
+</customMapSource>
+SXML
+    chown "$RTAK_USER:$RTAK_USER" "$SENTINEL_XML"
+    echo "  Pre-filled Sentinel-2 ATAK source XML: $SENTINEL_XML"
+fi
 
 echo ""
 echo "=== SatMap setup complete ==="
@@ -184,21 +212,22 @@ echo "Live log:     sudo journalctl -u rtak-satmap -f"
 echo "Tile server:  http://${NODE_IP}:${TILE_PORT}/"
 echo "ATAK source:  http://${NODE_IP}:${TILE_PORT}/latest/{z}/{x}/{y}.png"
 echo ""
-echo "ATAK map source setup (three ways — pick one):"
+echo "ATAK map source setup:"
 echo ""
-echo "  Option A — Download from tile server (easiest, no USB needed):"
-echo "    In ATAK's built-in browser, open:"
-echo "      http://${NODE_IP}:${TILE_PORT}/source.xml"
-echo "    Android will prompt to save/import the file. Save to /sdcard/atak/imagery/"
+echo "  RF satellite layer (NOAA/Meteor, ~4km resolution, updates every ~90 min):"
+echo "    Browser:  http://${NODE_IP}:${TILE_PORT}/source.xml"
+echo "    USB push: adb push $PREFILLED_XML /sdcard/atak/imagery/"
 echo ""
-echo "  Option B — Copy pre-filled XML via USB:"
-echo "    adb push $PREFILLED_XML /sdcard/atak/imagery/"
+if [[ "$NO_SENTINEL" -eq 0 ]]; then
+echo "  Sentinel-2 layer (10m resolution, updates every ~6h from ESA open data):"
+echo "    Browser:  http://${NODE_IP}:${TILE_PORT}/sentinel-source.xml"
+echo "    USB push: adb push $SATMAP_DIR/atak_sentinel_source.xml /sdcard/atak/imagery/"
+echo "    NOTE: Sentinel-2 layer will show 503 until the first poll completes (~6h)."
+echo "          Force an immediate poll: sudo systemctl restart rtak-satmap"
 echo ""
-echo "  Option C — Manual (edit <node-ip> yourself):"
-echo "    Copy rtak_satmap/atak_satmap_source.xml and replace <node-ip> with ${NODE_IP}"
-echo ""
-echo "  Then in ATAK: Map → Layers → enable 'RTAK SatMap — Latest Pass'"
-echo "  Satellite imagery updates after each decoded pass (~90 min cycle)"
+fi
+echo "  In ATAK: Map → Layers — layers appear automatically after files are saved."
+echo "  Stack both layers: Sentinel-2 base, RF satellite on top, set opacity ~70%."
 echo ""
 echo "Hardware check:"
 echo "  RTL-SDR detected: $(lsusb 2>/dev/null | grep -i rtl || echo 'not detected — plug in RTL-SDR')"

@@ -1,12 +1,19 @@
 # RTAK SatMap — Live Satellite Imagery for ATAK
 
-Automated weather satellite reception, processing, and delivery as a live map overlay in ATAK. The OmniNode records satellite passes, converts imagery to map tiles, and serves them via HTTP. ATAK treats the OmniNode as a custom tile source and displays the imagery as a transparent overlay on top of the base map — no ATAK plugin code required.
+Two complementary imagery sources, both served from the OmniNode as ATAK map layers:
 
-Imagery updates automatically every ~90 minutes as satellites pass overhead.
+| Layer | Resolution | Source | Update cycle | Cost |
+|---|---|---|---|---|
+| RF satellite (NOAA/Meteor) | ~4 km/px | 137 MHz receive | ~90 min | Free, no account |
+| Sentinel-2 (v1.1) | 10 m/px | ESA open data API | ~6 h | Free, no account |
+
+Both are served as standard ATAK custom tile sources — no ATAK plugin code required. Stack them: Sentinel-2 as the high-res base, RF satellite on top for live cloud/weather context.
 
 ---
 
 ## How It Works
+
+### RF Satellite Layer (NOAA/Meteor — 4 km resolution)
 
 ```
 NOAA/Meteor satellite (LEO, 137 MHz)
@@ -18,11 +25,25 @@ SatDump (automated decode + georeferencing)
 GDAL (gdalwarp + gdal2tiles)
         ↓  XYZ map tiles (PNG, EPSG:3857)
 Python tile server (port 8889)
-        ↓  HTTP tile requests
-ATAK custom map source → live satellite overlay on tactical map
+        ↓  http://<node-ip>:8889/latest/{z}/{x}/{y}.png
+ATAK → weather/cloud layer on tactical map
 ```
 
-The pipeline runs as a systemd service. It predicts upcoming passes, starts recording automatically at the right time, processes the output, and updates the `latest` tile set. ATAK always fetches from `http://<node-ip>:8889/latest/{z}/{x}/{y}.png` — no URL changes needed between passes.
+### Sentinel-2 Layer (ESA open data — 10 m resolution)
+
+```
+Element84 Earth Search STAC API (public, no account)
+        ↓  scene metadata + COG URL for latest low-cloud image
+GDAL /vsicurl/ (HTTP range request — streams only the needed area)
+        ↓  crop + reproject to EPSG:3857
+gdal2tiles → XYZ tiles
+        ↓  http://<node-ip>:8889/sentinel-latest/{z}/{x}/{y}.png
+ATAK → high-res terrain/urban base layer
+```
+
+No account, no API key, no registration required for Sentinel-2. ESA's Copernicus program makes all Sentinel-2 L2A imagery freely available. The pipeline queries the Element84 Earth Search catalog and streams only the area around your observer location — no full scene download.
+
+The pipeline runs as a systemd service managing both sources simultaneously.
 
 ---
 
@@ -134,17 +155,38 @@ Edit `rtak_satmap/atak_satmap_source.xml`, replace `<node-ip>` with the OmniNode
 3. Enable it and position it above the base map layer
 4. Set opacity to ~70% so tactical overlays remain visible underneath
 
-### Step 3 — Verify
+### Step 3 — Add the Sentinel-2 layer (v1.1)
 
-After the next satellite pass (~90 minutes from setup), the imagery will appear automatically on the map without any ATAK restart or reconfiguration.
+Same process, second XML file:
 
-To check what imagery is currently loaded:
+**Option A — Browser download:**
+```
+http://<node-ip>:8889/sentinel-source.xml
+```
+Save to `/sdcard/atak/imagery/`. Returns 503 until the first Sentinel poll completes — typically within the first 6 hours of service start.
+
+**Option B — USB push:**
+```bash
+adb push /opt/rtak/satmap/atak_sentinel_source.xml /sdcard/atak/imagery/
+```
+
+### Step 4 — Layer stacking in ATAK
+
+1. ATAK → **Map → Layers**
+2. Enable **RTAK SatMap — Latest Pass** (RF satellite)
+3. Enable **RTAK SatMap — Sentinel-2**
+4. Order: Sentinel-2 below RF satellite
+5. Set RF satellite layer opacity to ~70% so terrain/features show through
+
+**Result:** 10 m Sentinel-2 base layer with live weather/cloud data on top, both updating automatically.
+
+### Verify
 
 ```bash
 curl http://<node-ip>:8889/
 ```
 
-Returns JSON with the current tile set name, timestamp, and recent pass log.
+Returns JSON with status for both layers — RF passes and Sentinel-2 recent scenes.
 
 ---
 
@@ -164,6 +206,48 @@ Scheduled: METEOR-M2 3 @ 17:44 UTC (peak 52°, 780s, in 15600s)
 ```
 
 ---
+
+## Sentinel-2 Imagery (v1.1)
+
+Sentinel-2 is a European Space Agency (ESA) Earth observation constellation. All imagery is free and publicly available under the Copernicus Open License.
+
+| Attribute | Value |
+|---|---|
+| Resolution | 10 m/pixel (true color RGB) |
+| Revisit time | ~5 days at equator |
+| Coverage | Global |
+| Cloud masking | Pipeline skips scenes >20% cloud (configurable) |
+| Area fetched | 200 km radius around observer (configurable) |
+| Account required | No |
+| License | Copernicus Open License — unrestricted use |
+
+The pipeline polls every 6 hours. If a scene from the past 7 days exists with acceptable cloud cover, it tiles and serves it. For more frequent updates, lower `--sentinel-radius-km` (less area = faster tiling).
+
+### Tuning
+
+```bash
+# Tighter crop (faster), lower cloud tolerance
+sudo bash rtak_satmap/setup_satmap.sh \
+    --lat 38.9 --lon -77.0 \
+    --sentinel-radius-km 100 \
+    --sentinel-cloud-max 10
+
+# Disable Sentinel-2 (RF-only mode)
+sudo bash rtak_satmap/setup_satmap.sh \
+    --lat 38.9 --lon -77.0 --no-sentinel
+```
+
+### Planet Labs API (optional — sub-meter imagery)
+
+If you have a Planet Labs account (Education & Research program is free for qualifying users), pass your API key at setup time:
+
+```bash
+sudo bash rtak_satmap/setup_satmap.sh \
+    --lat 38.9 --lon -77.0 \
+    --planet-key YOUR_PLANET_API_KEY
+```
+
+Planet's PlanetScope constellation provides 3–50 cm imagery with daily revisits. The pipeline supports the key slot; full Planet download integration is documented in `satmap_pipeline.py` (see `PLANET_API_KEY` config block).
 
 ## Imagery Quality and Coverage
 
