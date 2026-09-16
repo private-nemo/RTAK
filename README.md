@@ -249,6 +249,33 @@ For a small trusted team on personally-owned phones, the practical risk is prima
 
 ---
 
+## Satellite Map Imagery — Technical Note
+
+ATAK's use of online satellite tile sources is an independent operational security concern, separate from anything RTAK encrypts.
+
+### The threat
+
+When ATAK fetches map tiles from an online provider (Google Maps, Bing, ArcGIS Online, etc.), it sends HTTP requests that encode the exact coordinates being viewed. Those requests travel over the Android device's internet connection — WiFi or cellular — completely outside the Reticulum mesh. RTAK has no visibility into or control over these requests.
+
+The tile provider learns:
+- The geographic bounding box of your operational area
+- When the map is actively in use (request timing and frequency)
+- The device's external IP address and potentially its cellular carrier
+
+This is true regardless of how well RTAK encrypts CoT traffic. The map tile channel is entirely separate.
+
+### Mitigations (in order of effectiveness)
+
+1. **Offline tile packs** — download imagery for your AO before operations begin. ATAK supports `.mbtiles`, CIB tiles, DTED elevation data, and native ATAK data packages. Once loaded, no network requests are made during ops. This is the correct operational answer.
+
+2. **Local tile server on the OmniNode** — run TileServer GL or a lightweight mbtiles HTTP server on the Pi. ATAK clients pull tiles from the node's LAN IP. All requests remain on the private local network and never reach the internet. Adds roughly 500 MB of disk and setup time but is transparent to ATAK clients once configured.
+
+3. **Network isolation** — if using offline tiles, put the Android device in airplane mode with WiFi enabled (to reach the OmniNode). No cellular connection means no separate internet path for tile requests or any other background traffic.
+
+For the RTAK threat model: online satellite tiles can be a larger operational leak than almost any other factor, because they directly reveal the area of interest to a commercial provider from an identified device — even while all CoT traffic is encrypted. Offline tiles eliminate this entirely.
+
+---
+
 ## Repository
 
 <https://github.com/private-nemo/RTAK>
