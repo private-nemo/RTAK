@@ -1,0 +1,6 @@
+# RTAK Peer Registry
+# Add the 32-character hex destination hash of each remote RTAK node, one per line.
+# The hash is printed to the console when the bridge starts on each remote node.
+#
+# Example:
+# a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6

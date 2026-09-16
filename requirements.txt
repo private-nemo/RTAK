@@ -1,0 +1,4 @@
+# RTAK Bridge dependencies
+rns>=0.7.0       # Reticulum Network Stack
+lxmf>=0.4.0      # Lightweight Extensible Message Format (runs over RNS)
+pytak>=6.4.0     # CoT utilities (not used in prototype but needed for next iteration)
