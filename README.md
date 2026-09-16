@@ -6,10 +6,12 @@ A self-contained tactical communications node that bridges ATAK/CoT situational 
 
 ## Hardware Overview
 
-| | | |
+| | | | |
 |:---:|:---:|:---:|
 | ![Raspberry Pi 4B](assets/pi4b.jpg) | ![LilyGO T-Beam Supreme — 915 MHz RNode](assets/tbeam-supreme.jpg) | ![LilyGO T-Beam v1.1 — 433 MHz RNode](assets/tbeam-v11.jpg) |
 | Raspberry Pi 4B | T-Beam Supreme (915 MHz) | T-Beam v1.1 (433 MHz) |
+| ![Argon NEO Aluminum Case](assets/argon-neo.jpg) | ![Waveshare UPS HAT D — 21700 UPS](assets/waveshare-ups.jpg) | ![Digirig Mobile — USB digital modes interface](assets/digirig.jpg) |
+| Argon NEO Case | Waveshare UPS HAT D | Digirig Mobile |
 
 ---
 
@@ -38,7 +40,7 @@ A self-contained tactical communications node that bridges ATAK/CoT situational 
 
 | Part | Source | Price |
 |---|---|---|
-| Waveshare UPS HAT (C) for Pi | [waveshare.com](https://www.waveshare.com) — search "UPS HAT C" | ~$25 |
+| Waveshare UPS HAT (D) for Pi 4B — 2× 21700 cells | [waveshare.com](https://www.waveshare.com/21700-ups-hat-d.htm) · [thepihut.com](https://thepihut.com/products/21700-ups-hat-d-for-raspberry-pi-4-3) | ~$25 |
 | Samsung 48G or Keeppower P2150U 21700 cells ×2 | Amazon — search "21700 5000mAh" | ~$18/pair |
 | Anker or Sabrent 4-port powered USB 3.0 hub | Amazon | ~$20 |
 
@@ -72,12 +74,13 @@ A self-contained tactical communications node that bridges ATAK/CoT situational 
 
 ### 2. Assemble the Pi
 
-![Raspberry Pi 4B](assets/pi4b.jpg)
-
-> *To add photos of the Argon NEO case and Waveshare UPS HAT C: download product images from [argon40.com](https://www.argon40.com/products/argon-neo-raspberry-pi-4-case) and [waveshare.com](https://www.waveshare.com/wiki/UPS_HAT_(C)) and save as `assets/argon-neo.jpg` and `assets/waveshare-ups.jpg`.*
+| | |
+|:---:|:---:|
+| ![Raspberry Pi 4B in Argon NEO case](assets/argon-neo.jpg) | ![Waveshare UPS HAT D — 21700 power](assets/waveshare-ups.jpg) |
+| Argon NEO — slides over Pi, SoC contacts aluminum shell | Waveshare UPS HAT D — stacks on GPIO header, holds 2× 21700 cells |
 
 1. Seat the Pi into the Argon NEO case. The case acts as a heatsink — no thermal paste needed; press the SoC firmly against the case interior.
-2. Stack the Waveshare UPS HAT (C) on the Pi's GPIO header.
+2. Stack the Waveshare UPS HAT (D) on the Pi's GPIO header.
 3. Insert two fully-charged 21700 cells into the UPS HAT battery holder, observing polarity.
 4. Connect the powered USB hub to one of the Pi's USB 3.0 ports (blue ports).
 
