@@ -4,6 +4,24 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 
 ---
 
+## rtak-satmap-v1
+**Added:** `rtak_satmap/`
+
+Automated weather satellite reception and live imagery overlay for ATAK. No ATAK plugin code required — ATAK's built-in custom map source system points to a tile server running on the OmniNode.
+
+**How it works:** SatDump records NOAA APT and Meteor-M2 LRPT passes (~137 MHz) using an RTL-SDR dongle, produces georeferenced GeoTIFF output, GDAL converts to XYZ map tiles, a lightweight Python HTTP server serves tiles at port 8889. ATAK fetches from `http://<node-ip>:8889/latest/{z}/{x}/{y}.png` — "latest" always resolves to the most recently decoded pass, updating automatically every ~90 minutes.
+
+**Pipeline features:** TLE auto-download and refresh, `pyorbital` pass prediction 12 hours ahead, minimum elevation filter (default 15°), recording via SatDump CLI with pass duration + margin timeout, GDAL warp to EPSG:3857 + tile generation, symlink rotation so ATAK URL never changes between passes, JSON pass log and status endpoint.
+
+- `satmap_pipeline.py` — full pipeline daemon: TLE download, pass scheduling, SatDump orchestration, GDAL tile generation, HTTP tile server, pass log
+- `setup_satmap.sh` — installs SatDump (pre-built ARM64 .deb or source build fallback), GDAL, pyorbital, deploys pipeline, installs `rtak-satmap.service`, opens UFW 8889/tcp
+- `atak_satmap_source.xml` — ATAK custom map source template (edit `<node-ip>`, copy to `/sdcard/atak/imagery/`)
+- `README.md` — full workflow: hardware BOM (RTL-SDR V4 + 137 MHz turnstile antenna + optional LNA), satellite reference table (NOAA 15/18/19, Meteor-M2-3/4), ATAK layer setup, pass quality guide, OPSEC note (passive reception only — no RF emission, no license required)
+
+**Additional hardware:** RTL-SDR V4 (~$35) + 137 MHz turnstile or QFH antenna (~$30–50) + SMA extension cable (~$8). Connects to existing USB hub on OmniNode. No additional HAT or GPIO wiring.
+
+---
+
 ## rtak-inlet-v1
 **Added:** `rtak_inlet/`
 

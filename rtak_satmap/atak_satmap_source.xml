@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RTAK SatMap — ATAK custom map source for live satellite imagery.
+
+  Copy this file to /sdcard/atak/imagery/ on each Android device.
+  Replace <node-ip> with your OmniNode's LAN IP address.
+
+  ATAK will display this as a map layer that updates automatically
+  after each satellite pass (approximately every 90 minutes).
+
+  The tile server runs on the OmniNode at port 8889.
+  "latest" always resolves to the most recently decoded pass.
+-->
+<customMapSource>
+    <name>RTAK SatMap — Latest Pass</name>
+    <minZoom>3</minZoom>
+    <maxZoom>12</maxZoom>
+    <type>tms</type>
+
+    <!-- Replace <node-ip> with your OmniNode's LAN IP -->
+    <url>http://&lt;node-ip&gt;:8889/latest/{z}/{x}/{y}.png</url>
+
+    <!-- Transparent background — SatMap renders on top of base map -->
+    <backgroundColor>#00000000</backgroundColor>
+</customMapSource>
