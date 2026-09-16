@@ -4,6 +4,21 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 
 ---
 
+## rtak-inlet-v1
+**Added:** `rtak_inlet/`
+
+Reticulum-over-internet module. Bridges RTAK LoRa meshes across the internet without exposing CoT content or protocol identity.
+
+Two modes: **Basic** (Reticulum TCP on port 4242 — already binary-encrypted, no CoT signature visible) and **Stealth** (stunnel TLS wrapper on port 443 — traffic is indistinguishable from HTTPS to any DPI, firewall, or middlebox). Double encryption in stealth mode: TLS outer layer + Reticulum Curve25519+AES inner layer; keys are independent.
+
+- `setup_inlet.sh` — appends `TCPServerInterface` to Reticulum config, optionally installs and configures `stunnel4` for stealth mode, opens UFW port, restarts Reticulum, prints the remote-node config block with detected public IP
+- `README.md` — explains the encryption layering, both modes, network requirements, router port-forward notes, DDNS setup for dynamic IPs, I2P option for full endpoint anonymization, and an illustrated multi-hop topology diagram
+- `reticulum-inlet.conf` — reference config snippets for both OmniNode server and remote client sides, plus I2P interface stub
+
+What the inlet does **not** hide: endpoint IP addresses are still visible to ISPs and network observers. Content and protocol identity are hidden; source/destination IP is not. For full anonymization, the I2P option documented in the README routes both through I2P.
+
+---
+
 ## v1.0.6
 **Changed:** `prototype.py`
 
