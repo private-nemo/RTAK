@@ -254,6 +254,22 @@ class _PanicHandler(http.server.BaseHTTPRequestHandler):
      before deploying. Items marked [PANIC] must be completed immediately
      if the network is compromised.</p>
 
+  <h2>PRE-OP: SIM Removal (Recommended)</h2>
+  <ul class="cl">
+    <li><input type="checkbox" id="sim1">
+        <label for="sim1">Remove SIM before ops (strongest mitigation)
+          <span class="sub">Power off → eject SIM tray → store SIM separately.
+          With no SIM + airplane mode, no IMEI or IMSI is logged at any tower.
+          RTAK requires only WiFi to the OmniNode — cellular is not needed.</span>
+        </label></li>
+    <li><input type="checkbox" id="sim2">
+        <label for="sim2">If SIM must stay in: verify WiFi Calling is off
+          <span class="sub">Settings → Network → SIMs → WiFi calling: off.
+          Enable airplane mode AFTER disabling WiFi Calling.
+          Some builds silently re-enable it when WiFi reconnects.</span>
+        </label></li>
+  </ul>
+
   <h2>PRE-OP: Network Isolation</h2>
   <ul class="cl">
     <li><input type="checkbox" id="p1">
@@ -261,9 +277,8 @@ class _PanicHandler(http.server.BaseHTTPRequestHandler):
           <span class="sub">Cellular off. Connect only to OmniNode AP.</span>
         </label></li>
     <li><input type="checkbox" id="p2">
-        <label for="p2">Disable WiFi Calling / VoLTE
-          <span class="sub">Settings → Network → SIMs → WiFi calling: off
-          — some Android builds route calls over WiFi even in airplane mode</span>
+        <label for="p2">Confirm WiFi Calling / VoLTE is off
+          <span class="sub">Already checked above — verify it did not re-enable</span>
         </label></li>
     <li><input type="checkbox" id="p3">
         <label for="p3">Disable Bluetooth

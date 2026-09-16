@@ -113,15 +113,45 @@ Camera app → Settings → **Location tags: off**
 
 GrapheneOS: additionally deny location permission to the camera app entirely (Settings → Apps → Camera → Permissions → Location: **Deny**).
 
-### 3e. IMEI
+### 3e. IMEI and SIM-less Operation
 
-IMEI is the hardware identifier burned into the baseband. Every cellular tower that sees the device logs its IMEI.
+IMEI is the hardware identifier burned into the baseband. Every cellular tower that sees the device logs its IMEI alongside your IMSI (from the SIM). These records are available to carriers, intelligence agencies, and anyone who can query or subpoena them. The IMEI is also logged by any device running passive IMSI-catching equipment near the operator.
 
-**Mitigation (remove SIM):** With no SIM and in airplane mode, the device does not register with any tower. IMEI is irrelevant.
+**The cleanest solution is SIM-less operation.** Remove the SIM before any operation where cellular attribution is a concern. With no SIM inserted and airplane mode active:
 
-**GrapheneOS IMEI randomization:** Settings → About phone → IMEI → Randomize. Generates a random IMEI per session, preventing cross-session carrier correlation. This is the strongest available mitigation short of SIM removal.
+- The baseband does not register with any tower — no IMSI or IMEI logged anywhere
+- No carrier metadata is generated for the duration of the operation
+- WiFi-only networking via the OmniNode remains fully functional
+- ATAK, Reticulum, and all RTAK features work exactly as designed
 
-**Stock Android:** IMEI is fixed and cannot be spoofed.
+The RTAK OmniNode provides all connectivity needed: WiFi (for device association), LoRa (for mesh SA), and optionally internet via the OmniNode's uplink. There is no operational dependency on cellular for RTAK field use.
+
+**Pre-op SIM-less procedure:**
+
+1. Power device off completely
+2. Remove SIM tray — store SIM separately or leave it at base
+3. Power device on — Android boots cleanly without a SIM
+4. Enable airplane mode immediately at boot
+5. Re-enable WiFi only — connect to OmniNode SSID
+6. Verify: Settings → About phone → SIM status should show "No SIM"
+
+**If you must keep the SIM installed (e.g., device needs to receive calls outside RTAK):**
+
+- Enable airplane mode — this suspends baseband registration
+- Disable WiFi Calling before enabling airplane mode (see section 2a) — some builds re-enable it when WiFi reconnects, routing calls through the carrier path over the OmniNode's internet uplink
+- GrapheneOS users: Settings → About phone → IMEI → **Randomize** before ops. This generates a fresh random IMEI per session, breaking cross-session correlation at carriers who log IMEI.
+- Stock Android: IMEI is fixed in hardware and cannot be spoofed. SIM removal is the only reliable mitigation.
+
+**eSIM devices:** Airplane mode stops baseband registration, but the eSIM profile cannot be physically removed. SIM-less operation requires either a device without eSIM or a device where the eSIM profile can be deleted entirely before ops. GrapheneOS allows deletion of eSIM profiles; stock Android on carrier-locked devices typically does not.
+
+**Summary:**
+
+| Method | Eliminates IMEI/IMSI logging | Notes |
+|---|---|---|
+| SIM removed + airplane mode | Yes | Strongest; no cellular capability |
+| Airplane mode only (SIM in) | Yes (while active) | WiFi Calling must be off |
+| GrapheneOS IMEI randomize | Partial | Breaks cross-session correlation; tower still logs new IMEI |
+| Stock Android (SIM in, airplane off) | No | Baseline — do not use for sensitive ops |
 
 ---
 
@@ -197,7 +227,7 @@ The complete interactive checklist is available at `http://<node-ip>:8888/checkl
 | Risk | Mitigation | Priority |
 |---|---|---|
 | Google telemetry | GrapheneOS, no Google account, CivTAK APK | Critical |
-| Cellular IMSI/IMEI | SIM removal + airplane mode | Critical |
+| Cellular IMSI/IMEI | SIM removal (preferred) or airplane mode + WiFi Calling off | Critical |
 | Map tile leakage | Offline mbtiles, remove online sources | Critical |
 | DNS leakage | Device DNS → OmniNode sinkhole | High |
 | NTP fingerprinting | Device NTP → OmniNode chrony | High |
