@@ -4,6 +4,31 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 
 ---
 
+## v1.0.6
+**Changed:** `prototype.py`
+
+Panic control panel enhanced with device-side operator checklist.
+
+- **Two-tab UI** — control panel at port 8888 now has "Server Panic" and "Device Checklist" tabs
+- **GET `/checklist`** — standalone full hardening checklist page (linkable, bookmarkable from ATAK browser); covers pre-op network isolation, device hardening, ATAK settings, and panic protocol steps
+- **Auto-switch on panic** — triggering server wipe automatically switches to the Device Checklist tab so operators immediately see the manual steps required on their Android device
+- Device checklist covers: clear ATAK event data, delete GeoChat history, delete track log, remove server connection profile, disable WiFi Calling, factory reset procedure
+
+**Changed (no tag):** `setup_pi.sh`
+
+- Added `macchanger` to system packages
+- New `mac-randomize.service` systemd unit: randomizes Pi's MAC address on `$LAN_IFACE` at every boot, before network comes up
+- `debconf-set-selections` prevents macchanger from running a conflicting automatic mode
+
+**Added (no tag):** `rtak_hardening/`
+
+Comprehensive Android device hardening guide and plugin whitelist. Covers all 12 items identified in the RTAK security audit:
+
+- `README.md` — full hardening guide: OS selection (GrapheneOS vs stock), network isolation (airplane mode, WiFi-only, MAC randomization, DNS/NTP via OmniNode, BT off, forget non-RTAK networks), device hardening (ADB off, USB data lock, encryption verify, screen lock, EXIF geotagging, IMEI randomization), ATAK settings (offline maps, plugin whitelist, SSL only), Google Play Store leak analysis, panic protocol with device-side steps, operational posture summary table
+- `allowed_plugins.md` — plugin whitelist framework: approval criteria, review procedure (apktool decompile + grep + tcpdump), disqualifying findings (analytics SDKs, unexpected outbound, unknown source), empty approved list (add plugins as they pass review)
+
+---
+
 ## v1.0.5
 **Changed:** `prototype.py`
 

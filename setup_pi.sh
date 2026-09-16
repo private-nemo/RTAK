@@ -74,7 +74,7 @@ apt-get update -qq
 apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
     git usbutils openssl ufw \
-    chrony dnsmasq
+    chrony dnsmasq macchanger
 
 # ---------------------------------------------------------------------------
 # 2. Flash RNode firmware (requires boards to be plugged in)
@@ -401,6 +401,34 @@ systemctl restart dnsmasq
 echo "  dnsmasq sinkhole active on $LAN_IFACE:53"
 echo "  Android DNS → set to this Pi's IP in WiFi advanced settings"
 echo "  All external DNS queries from clients will return NXDOMAIN"
+
+# ---------------------------------------------------------------------------
+# MAC address randomization — Pi randomizes its own MAC at each boot
+# ---------------------------------------------------------------------------
+echo "  Configuring MAC address randomization for $LAN_IFACE..."
+
+# Debconf: set macchanger to not run automatically (we use our own unit)
+echo "macchanger macchanger/automatically_run boolean false" | debconf-set-selections
+
+cat > /etc/systemd/system/mac-randomize.service <<MACSVC
+[Unit]
+Description=Randomize MAC address on $LAN_IFACE
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/macchanger -r $LAN_IFACE
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+MACSVC
+
+systemctl enable mac-randomize
+echo "  Pi MAC randomization enabled — new random MAC assigned on each boot"
+echo "  Android: enable per-network MAC randomization in WiFi settings"
+echo "  GrapheneOS: this is already enabled by default"
 
 echo ""
 echo "=== Setup complete ==="

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RTAK Bridge — v1.0.5
+RTAK Bridge — v1.0.6
 Routes CoT (Cursor on Target) messages between a local FreeTAKServer
 instance and a private Reticulum network over any transport
 (LoRa 433/915, WiFi, AX.25, serial, etc.).
@@ -25,6 +25,13 @@ v1.0.5 additions:
       POST /panic   — trigger wipe + propagate to all peers
   - Inbound LXMF "panic" messages from trusted peers trigger local wipe
     and do NOT re-propagate (prevents wipe loops)
+
+v1.0.6 additions:
+  - Panic panel now includes a "Device Checklist" tab: manual steps the
+    operator must complete on the Android device when panic fires
+    (ATAK data clear, WiFi Calling disable, USB debug check, etc.)
+  - GET /checklist  — device hardening checklist page (linkable from ATAK)
+  - GET /           — now has two tabs: Server Panic + Device Checklist
 
 Dependencies:
   pip install rns lxmf pytak
@@ -99,7 +106,9 @@ class _PanicHandler(http.server.BaseHTTPRequestHandler):
             peers = self.bridge._load_peers()
             self._json({"status": "ok", "peers": len(peers)})
         elif self.path in ("/", "/panic"):
-            self._html()
+            self._html_main()
+        elif self.path == "/checklist":
+            self._html_checklist()
         else:
             self.send_error(404)
 
@@ -118,46 +127,248 @@ class _PanicHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _html(self):
-        body = b"""<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>RTAK Control</title>
-  <style>
-    body{font-family:monospace;background:#111;color:#0f0;padding:20px;max-width:480px;margin:auto}
-    h1{color:#0f0;margin-bottom:4px}
-    p{color:#888;font-size:14px}
-    .panic{display:block;width:100%;padding:28px;background:#800;color:#fff;
-           font-size:22px;font-weight:bold;border:none;border-radius:8px;
-           cursor:pointer;margin-top:28px;letter-spacing:1px}
-    .panic:active{background:#c00}
-    #msg{margin-top:20px;color:#ff0;min-height:24px;font-size:14px}
-  </style>
-</head>
-<body>
-  <h1>RTAK Node</h1>
-  <p>Panic wipe deletes all FTS event logs on this node and transmits
-     the wipe command to every trusted peer via Reticulum.</p>
-  <button class="panic" onclick="go()">&#9888; PANIC — WIPE ALL LOGS</button>
-  <div id="msg"></div>
-  <script>
-    function go(){
-      if(!confirm("Wipe all FTS event logs on this node and all peers?"))return;
-      document.getElementById("msg").textContent="Wiping…";
-      fetch("/panic",{method:"POST"})
-        .then(r=>r.json())
-        .then(d=>{document.getElementById("msg").textContent="Done: "+JSON.stringify(d);})
-        .catch(e=>{document.getElementById("msg").textContent="Error: "+e;});
-    }
-  </script>
-</body>
-</html>"""
+    def _send_html(self, body: bytes):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    _CSS = b"""
+<style>
+  *{box-sizing:border-box}
+  body{font-family:monospace;background:#111;color:#ccc;padding:16px;
+       max-width:520px;margin:auto;font-size:15px}
+  h1{color:#0f0;margin:0 0 4px}
+  .tabs{display:flex;gap:8px;margin:16px 0 0}
+  .tab{padding:8px 18px;background:#222;border:none;color:#888;
+       border-radius:6px 6px 0 0;cursor:pointer;font:inherit}
+  .tab.active{background:#1a1a1a;color:#0f0;border-bottom:2px solid #0f0}
+  .pane{background:#1a1a1a;border-radius:0 6px 6px 6px;padding:20px;
+        margin-bottom:20px}
+  .pane.hidden{display:none}
+  p{color:#888;font-size:13px;margin:0 0 16px}
+  .panic{display:block;width:100%;padding:26px;background:#700;color:#fff;
+         font-size:20px;font-weight:bold;border:none;border-radius:8px;
+         cursor:pointer;letter-spacing:1px}
+  .panic:active{background:#b00}
+  #msg{margin-top:14px;color:#ff0;min-height:20px;font-size:13px}
+  .cl{list-style:none;padding:0;margin:0}
+  .cl li{display:flex;align-items:flex-start;gap:10px;
+          padding:10px 0;border-bottom:1px solid #2a2a2a}
+  .cl li:last-child{border-bottom:none}
+  .cl li label{cursor:pointer;color:#ccc;font-size:14px}
+  .cl li input[type=checkbox]{width:18px;height:18px;margin-top:2px;
+                               flex-shrink:0;accent-color:#0f0}
+  .cl li input:checked + label{color:#555;text-decoration:line-through}
+  .sub{display:block;color:#666;font-size:12px;margin-top:2px}
+  h2{color:#0f0;font-size:14px;margin:16px 0 8px;letter-spacing:1px}
+  .warn{background:#330;border-left:3px solid #f80;padding:10px 12px;
+        color:#f80;font-size:13px;border-radius:4px;margin-bottom:14px}
+</style>"""
+
+    def _html_main(self):
+        body = self._CSS + b"""
+<!DOCTYPE html><html><head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RTAK Control</title>
+</head><body>
+  <h1>RTAK Node</h1>
+  <div class="tabs">
+    <button class="tab active" onclick="show('panic',this)">Server Panic</button>
+    <button class="tab" onclick="show('device',this)">Device Checklist</button>
+  </div>
+
+  <div id="panic" class="pane">
+    <div class="warn">&#9888; Panic wipe deletes ALL FTS event logs on this node
+    and sends the wipe command to every trusted peer via Reticulum.
+    This action cannot be undone.</div>
+    <button class="panic" onclick="go()">&#9888; PANIC &mdash; WIPE SERVER LOGS</button>
+    <div id="msg"></div>
+  </div>
+
+  <div id="device" class="pane hidden">
+    <p>Complete these steps on every Android device connected to this network.
+       <a href="/checklist" style="color:#0a0">Full checklist &rarr;</a></p>
+    <h2>IMMEDIATE</h2>
+    <ul class="cl">
+      <li><input type="checkbox" id="c1">
+          <label for="c1">Clear ATAK event data
+            <span class="sub">ATAK → Settings → My Profile → Advanced →
+            Clear Event Data</span></label></li>
+      <li><input type="checkbox" id="c2">
+          <label for="c2">Clear ATAK chat history
+            <span class="sub">ATAK → GeoChat → overflow menu → Delete All</span>
+          </label></li>
+      <li><input type="checkbox" id="c3">
+          <label for="c3">Delete ATAK track log
+            <span class="sub">ATAK map → Track History → Delete All Tracks</span>
+          </label></li>
+      <li><input type="checkbox" id="c4">
+          <label for="c4">Remove TAK server connection profile
+            <span class="sub">ATAK → Settings → Network → Manage Server
+            Connections → delete this node's entry</span></label></li>
+    </ul>
+    <h2>IF TIME ALLOWS</h2>
+    <ul class="cl">
+      <li><input type="checkbox" id="c5">
+          <label for="c5">Enable airplane mode, WiFi off
+            <span class="sub">Cuts all radio links</span></label></li>
+      <li><input type="checkbox" id="c6">
+          <label for="c6">Disable WiFi Calling / VoLTE
+            <span class="sub">Settings → Network → SIMs → WiFi calling: off</span>
+          </label></li>
+    </ul>
+  </div>
+
+  <script>
+    function show(id,btn){
+      document.querySelectorAll('.pane').forEach(p=>p.classList.add('hidden'));
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      document.getElementById(id).classList.remove('hidden');
+      btn.classList.add('active');
+    }
+    function go(){
+      if(!confirm("Wipe all FTS event logs on this node and all peers?"))return;
+      document.getElementById("msg").textContent="Wiping…";
+      fetch("/panic",{method:"POST"})
+        .then(r=>r.json())
+        .then(d=>{
+          document.getElementById("msg").textContent="Done — check Device Checklist tab.";
+          show('device', document.querySelectorAll('.tab')[1]);
+        })
+        .catch(e=>{document.getElementById("msg").textContent="Error: "+e;});
+    }
+  </script>
+</body></html>"""
+        self._send_html(body)
+
+    def _html_checklist(self):
+        body = self._CSS + b"""
+<!DOCTYPE html><html><head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RTAK Device Checklist</title>
+</head><body>
+  <h1>Device Hardening Checklist</h1>
+  <p>Complete before every operation. Items marked [PRE-OP] must be done
+     before deploying. Items marked [PANIC] must be completed immediately
+     if the network is compromised.</p>
+
+  <h2>PRE-OP: Network Isolation</h2>
+  <ul class="cl">
+    <li><input type="checkbox" id="p1">
+        <label for="p1">Airplane mode ON, WiFi ON (only)
+          <span class="sub">Cellular off. Connect only to OmniNode AP.</span>
+        </label></li>
+    <li><input type="checkbox" id="p2">
+        <label for="p2">Disable WiFi Calling / VoLTE
+          <span class="sub">Settings → Network → SIMs → WiFi calling: off
+          — some Android builds route calls over WiFi even in airplane mode</span>
+        </label></li>
+    <li><input type="checkbox" id="p3">
+        <label for="p3">Disable Bluetooth
+          <span class="sub">Eliminates BT probe broadcasts and pairing surface</span>
+        </label></li>
+    <li><input type="checkbox" id="p4">
+        <label for="p4">Forget all non-RTAK WiFi networks
+          <span class="sub">Settings → WiFi → Saved networks → forget all
+          except OmniNode SSID. Eliminates probe request SSID leakage.</span>
+        </label></li>
+    <li><input type="checkbox" id="p5">
+        <label for="p5">Enable per-network MAC randomization
+          <span class="sub">Settings → WiFi → OmniNode network → Privacy
+          → Randomized MAC (GrapheneOS: enabled by default)</span>
+        </label></li>
+  </ul>
+
+  <h2>PRE-OP: Device Hardening</h2>
+  <ul class="cl">
+    <li><input type="checkbox" id="h1">
+        <label for="h1">Disable USB debugging (ADB)
+          <span class="sub">Settings → Developer Options → USB debugging: off.
+          Physical USB access = full shell if ADB is on.</span>
+        </label></li>
+    <li><input type="checkbox" id="h2">
+        <label for="h2">USB port: charging only when locked
+          <span class="sub">GrapheneOS: Settings → Security → USB →
+          &ldquo;No data connections when locked&rdquo;. Blocks forensic USB access.</span>
+        </label></li>
+    <li><input type="checkbox" id="h3">
+        <label for="h3">Strong PIN lock (not biometric as primary)
+          <span class="sub">Biometrics can be compelled. PIN/passphrase cannot.
+          Set screen lock timeout to 30s max.</span>
+        </label></li>
+    <li><input type="checkbox" id="h4">
+        <label for="h4">Auto-wipe after 10 failed unlock attempts
+          <span class="sub">Settings → Security → Lock screen → enable
+          auto factory reset after failed attempts</span>
+        </label></li>
+    <li><input type="checkbox" id="h5">
+        <label for="h5">Disable camera geotagging
+          <span class="sub">Camera app → Settings → Location tags: off.
+          Photos shared via ATAK GeoChat strip EXIF GPS coordinates.</span>
+        </label></li>
+    <li><input type="checkbox" id="h6">
+        <label for="h6">Verify full-disk encryption active
+          <span class="sub">Settings → Security → Encryption &amp; credentials
+          → confirm encrypted. Default on Android 10+ but verify.</span>
+        </label></li>
+    <li><input type="checkbox" id="h7">
+        <label for="h7">Set device DNS to OmniNode IP
+          <span class="sub">WiFi → (network) → Advanced → IP settings:
+          Static → DNS 1: &lt;node-ip&gt;. Blocks external DNS leakage.</span>
+        </label></li>
+    <li><input type="checkbox" id="h8">
+        <label for="h8">Set device NTP to OmniNode IP
+          <span class="sub">Developer Options → NTP server: &lt;node-ip&gt;.
+          Eliminates time.google.com contact.</span>
+        </label></li>
+  </ul>
+
+  <h2>PRE-OP: ATAK Settings</h2>
+  <ul class="cl">
+    <li><input type="checkbox" id="a1">
+        <label for="a1">Remove all online map sources
+          <span class="sub">ATAK → Map → Layers → remove Google, Bing,
+          ArcGIS etc. Use offline mbtiles only.</span>
+        </label></li>
+    <li><input type="checkbox" id="a2">
+        <label for="a2">Disable approved-only plugins
+          <span class="sub">ATAK → Settings → Tool Preferences →
+          disable any plugin not on the team whitelist</span>
+        </label></li>
+    <li><input type="checkbox" id="a3">
+        <label for="a3">Verify ATAK connects via SSL (port 8089, client cert)
+          <span class="sub">Manage Server Connections → SSL: on, port 8089,
+          cert loaded. Never use plain-text port 8087.</span>
+        </label></li>
+  </ul>
+
+  <h2>PANIC: Immediate Device Actions</h2>
+  <ul class="cl">
+    <li><input type="checkbox" id="d1">
+        <label for="d1">Clear ATAK event data
+          <span class="sub">ATAK → Settings → My Profile → Advanced
+          → Clear Event Data</span></label></li>
+    <li><input type="checkbox" id="d2">
+        <label for="d2">Delete all GeoChat messages
+          <span class="sub">GeoChat → overflow menu → Delete All</span>
+        </label></li>
+    <li><input type="checkbox" id="d3">
+        <label for="d3">Delete all track history
+          <span class="sub">Map → Track History → Delete All Tracks</span>
+        </label></li>
+    <li><input type="checkbox" id="d4">
+        <label for="d4">Remove TAK server connection profile
+          <span class="sub">Manage Server Connections → delete OmniNode entry</span>
+        </label></li>
+    <li><input type="checkbox" id="d5">
+        <label for="d5">Factory reset if device may be compromised
+          <span class="sub">Settings → General management → Reset
+          → Factory data reset</span></label></li>
+  </ul>
+</body></html>"""
+        self._send_html(body)
 
 
 # ---------------------------------------------------------------------------
