@@ -6,7 +6,7 @@ A self-contained tactical communications node that bridges ATAK/CoT situational 
 
 ## Hardware Overview
 
-| | | | |
+| | | |
 |:---:|:---:|:---:|
 | ![Raspberry Pi 4B](assets/pi4b.jpg) | ![LilyGO T-Beam Supreme — 915 MHz RNode](assets/tbeam-supreme.jpg) | ![LilyGO T-Beam v1.1 — 433 MHz RNode](assets/tbeam-v11.jpg) |
 | Raspberry Pi 4B | T-Beam Supreme (915 MHz) | T-Beam v1.1 (433 MHz) |
