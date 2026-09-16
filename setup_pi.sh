@@ -3,14 +3,17 @@
 # Tested on: Raspberry Pi OS Lite (64-bit), Bookworm
 #
 # What this does:
-#   1. Updates system packages
-#   2. Installs Python deps: rns, lxmf, pytak, FreeTAKServer
-#   3. Deploys the RTAK bridge to /opt/rtak
-#   4. Writes a Reticulum config for dual RNodes (915 + 433 MHz) + WiFi
-#   5. Generates a private CA + server TLS cert for FTS (SSL CoT on 8089)
-#   6. Hardens firewall: blocks plain-text port 8087, allows only 8089 + SSH
-#   7. Installs systemd services for FreeTAKServer and the bridge
-#   8. Enables both services to start at boot
+#   1.  Updates system packages
+#   2.  Installs Python deps: rns, lxmf, pytak, FreeTAKServer
+#   3.  Deploys the RTAK bridge to /opt/rtak
+#   4.  Writes a Reticulum config for dual RNodes (915 + 433 MHz) + WiFi
+#   5a. Generates a private CA + server TLS cert for FTS (SSL CoT on 8089)
+#   5b. Hardens firewall: blocks plain-text port 8087, allows only 8089 + SSH
+#       Also opens: 8888 (panic panel), 53/udp (DNS sinkhole), 123/udp (NTP)
+#   5c. Installs FreeTAKServer with SSL config
+#   6.  Installs systemd services for FreeTAKServer and the bridge
+#   7.  Configures chrony as a local NTP server (LAN clients use Pi for time)
+#   8.  Configures dnsmasq as a DNS sinkhole (all external DNS returns NXDOMAIN)
 #
 # Usage:
 #   sudo bash setup_pi.sh
@@ -23,6 +26,9 @@
 #   5. Note the bridge hash printed in: journalctl -u rtak-bridge -f
 #   6. Generate per-user client certs: sudo bash /opt/rtak/generate_user_cert.sh <username>
 #      Import the resulting <username>.p12 into ATAK as a trust store
+#   7. On Android: WiFi advanced settings → set DNS to this Pi's IP
+#      On Android: Developer options → set NTP server to this Pi's IP
+#      (or use GrapheneOS network-time-update settings)
 
 set -euo pipefail
 
@@ -54,19 +60,26 @@ echo "RNode 915: $PORT_915"
 echo "RNode 433: $PORT_433"
 echo ""
 
+# Detect primary LAN interface for dnsmasq binding
+LAN_IFACE=$(ip route show default 2>/dev/null | awk '{print $5}' | head -1)
+LAN_IFACE="${LAN_IFACE:-eth0}"
+echo "Detected LAN interface: $LAN_IFACE"
+echo ""
+
 # ---------------------------------------------------------------------------
 # 1. System packages
 # ---------------------------------------------------------------------------
-echo "[1/6] Updating system packages..."
+echo "[1/8] Updating system packages..."
 apt-get update -qq
 apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
-    git usbutils openssl ufw
+    git usbutils openssl ufw \
+    chrony dnsmasq
 
 # ---------------------------------------------------------------------------
 # 2. Flash RNode firmware (requires boards to be plugged in)
 # ---------------------------------------------------------------------------
-echo "[2/6] Installing rnodeconf and checking RNode firmware..."
+echo "[2/8] Installing rnodeconf and checking RNode firmware..."
 pip3 install --quiet rnodeconf
 
 echo "  Flashing 915 MHz RNode on $PORT_915..."
@@ -82,7 +95,7 @@ rnodeconf --autoinstall --freq $FREQ_433 --bw $BANDWIDTH --txp $TXPOWER \
 # ---------------------------------------------------------------------------
 # 3. Create RTAK system user and deploy files
 # ---------------------------------------------------------------------------
-echo "[3/6] Creating rtak user and deploying files..."
+echo "[3/8] Creating rtak user and deploying files..."
 id "$RTAK_USER" &>/dev/null || useradd --system --shell /usr/sbin/nologin \
     --home-dir "$RTAK_HOME" --create-home "$RTAK_USER"
 
@@ -104,7 +117,7 @@ chown -R "$RTAK_USER:$RTAK_USER" "$RTAK_HOME"
 # ---------------------------------------------------------------------------
 # 4. Reticulum config
 # ---------------------------------------------------------------------------
-echo "[4/6] Writing Reticulum config..."
+echo "[4/8] Writing Reticulum config..."
 mkdir -p "$RNS_CONFIG"
 
 cat > "$RNS_CONFIG/config" <<RETCONFIG
@@ -157,7 +170,7 @@ echo "  Reticulum config written to $RNS_CONFIG/config"
 # ---------------------------------------------------------------------------
 # 5. TLS certificates (private CA + server cert for FTS)
 # ---------------------------------------------------------------------------
-echo "[5a/6] Generating RTAK private CA and server certificates..."
+echo "[5a/8] Generating RTAK private CA and server certificates..."
 mkdir -p "$CERTS_DIR"
 chmod 700 "$CERTS_DIR"
 
@@ -234,22 +247,26 @@ chmod 600 "$CERTS_DIR"/*.key "$CERTS_DIR"/*.p12 2>/dev/null || true
 # ---------------------------------------------------------------------------
 # 5b. Firewall hardening
 # ---------------------------------------------------------------------------
-echo "[5b/6] Hardening firewall..."
+echo "[5b/8] Hardening firewall..."
 ufw --force reset >/dev/null
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow ssh
 ufw allow 8089/tcp comment "FTS SSL CoT (ATAK clients)"
 ufw allow 8080/tcp comment "FTS data packages"
+ufw allow 8888/tcp comment "RTAK panic panel (open in ATAK browser)"
+ufw allow 53/udp  comment "DNS sinkhole (LAN clients)"
+ufw allow 123/udp comment "NTP server (LAN clients)"
 # Port 8087 (plain-text CoT) intentionally NOT opened
 ufw --force enable
-echo "  UFW enabled. Open ports: 22 (SSH), 8089 (SSL CoT), 8080 (data packages)"
+echo "  UFW enabled. Open ports: 22 (SSH), 8089 (SSL CoT), 8080 (packages)"
+echo "              8888 (panic panel), 53/udp (DNS), 123/udp (NTP)"
 echo "  Port 8087 (plain-text CoT) is BLOCKED"
 
 # ---------------------------------------------------------------------------
 # 5c. FreeTAKServer with SSL
 # ---------------------------------------------------------------------------
-echo "[5c/6] Installing FreeTAKServer..."
+echo "[5c/8] Installing FreeTAKServer..."
 pip3 install --quiet FreeTAKServer
 
 FTS_CONFIG="/etc/freetakserver"
@@ -299,7 +316,7 @@ FTSSVC
 # ---------------------------------------------------------------------------
 # 6. RTAK bridge systemd unit
 # ---------------------------------------------------------------------------
-echo "[6/6] Installing RTAK bridge systemd service...
+echo "[6/8] Installing RTAK bridge systemd service...
 Note: bridge connects to FTS on loopback 8087 (not firewalled for 127.0.0.1)."
 cat > /etc/systemd/system/rtak-bridge.service <<BRIDGESVC
 [Unit]
@@ -325,6 +342,65 @@ BRIDGESVC
 
 systemctl daemon-reload
 systemctl enable freetakserver rtak-bridge
+
+# ---------------------------------------------------------------------------
+# 7. chrony — local NTP server
+# ---------------------------------------------------------------------------
+echo "[7/8] Configuring chrony as local NTP server..."
+
+# Keep upstream pool for initial sync when internet is available.
+# local stratum 10 = fallback: serve time from local clock when offline.
+# This means Android devices never need to contact time.google.com.
+cat >> /etc/chrony/chrony.conf <<CHRONYCONF
+
+# RTAK: serve time to LAN clients
+allow 10.0.0.0/8
+allow 192.168.0.0/16
+allow 172.16.0.0/12
+
+# RTAK: when no internet NTP is reachable, serve local clock at stratum 10
+# so LAN clients still get a consistent time reference during offline ops
+local stratum 10
+CHRONYCONF
+
+systemctl enable chrony
+systemctl restart chrony
+echo "  chrony configured. Android NTP server → set to this Pi's IP in Developer Options"
+echo "  (GrapheneOS: Settings → System → Date & Time → network time provider)"
+
+# ---------------------------------------------------------------------------
+# 8. dnsmasq — DNS sinkhole
+# ---------------------------------------------------------------------------
+echo "[8/8] Configuring dnsmasq DNS sinkhole..."
+
+# dnsmasq binds to the LAN interface only.
+# Pi's own DNS continues to use systemd-resolved (127.0.0.53) — unaffected.
+# LAN clients that use the Pi as their DNS server get NXDOMAIN for all
+# external queries — tile servers, analytics, telemetry, etc. cannot resolve.
+# Reticulum is unaffected (uses cryptographic hashes, not DNS hostnames).
+
+cat > /etc/dnsmasq.d/rtak-sinkhole.conf <<DNSCFG
+# RTAK DNS sinkhole — returns NXDOMAIN for all external queries
+# Bind to LAN interface only so Pi's own systemd-resolved is untouched
+bind-interfaces
+interface=$LAN_IFACE
+
+# No upstream resolvers — every external query returns NXDOMAIN
+no-resolv
+no-poll
+bogus-priv
+domain-needed
+
+# Pi's own hostname still resolves via /etc/hosts
+# Add static entries below if needed:
+# address=/rtak.local/<this-pi-ip>
+DNSCFG
+
+systemctl enable dnsmasq
+systemctl restart dnsmasq
+echo "  dnsmasq sinkhole active on $LAN_IFACE:53"
+echo "  Android DNS → set to this Pi's IP in WiFi advanced settings"
+echo "  All external DNS queries from clients will return NXDOMAIN"
 
 echo ""
 echo "=== Setup complete ==="
@@ -355,7 +431,18 @@ echo "Security summary:"
 echo "  LoRa/Reticulum transport:  E2E encrypted (Reticulum default)"
 echo "  ATAK → FTS connection:     TLS mutual auth (client cert required)"
 echo "  Inbound bridge relay:      Whitelist-only (rtak_peers.txt)"
-echo "  Firewall:                  UFW — only SSH, 8089, 8080 open"
+echo "  Firewall:                  UFW — SSH, 8089, 8080, 8888, DNS, NTP"
+echo "  DNS sinkhole:              dnsmasq on $LAN_IFACE — NXDOMAIN for all external queries"
+echo "  Local NTP:                 chrony — serves LAN clients, no time.google.com needed"
+echo ""
+echo "Android client hardening checklist:"
+echo "  [ ] WiFi advanced settings → DNS → set to $(hostname -I | awk '{print $1}')"
+echo "  [ ] Developer options → NTP server → set to $(hostname -I | awk '{print $1}')"
+echo "  [ ] Enable airplane mode during ops, WiFi-only to reach OmniNode"
+echo "  [ ] Use GrapheneOS or equivalent degoogled OS"
+echo ""
+echo "Panic control panel: http://$(hostname -I | awk '{print $1}'):8888/"
+echo "  Open in ATAK browser to wipe FTS logs on all nodes simultaneously."
 echo ""
 echo "FTS data:       $RTAK_HOME/fts_data.db"
 echo "RNS config:     $RNS_CONFIG/config"

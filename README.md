@@ -247,6 +247,16 @@ This is a fundamental property of running on commercial Android — not a gap in
 
 For a small trusted team on personally-owned phones, the practical risk is primarily network interception — which RTAK addresses well. If the threat model includes a hostile OS or device vendor, GrapheneOS is the correct layer to address it, not additional network-level crypto.
 
+### Google Play Store as a Leak Vector
+
+**Do not install ATAK from the Google Play Store on a device used for sensitive operations.** The Google Play Store is a data collection conduit — Google logs every app you install, the device identity, your account, your location at install time, and periodic phone-home traffic from Play Services. A device with a Google account and Play Services installed has a persistent, cloud-linked identity that can be subpoenaed or queried regardless of what RTAK encrypts.
+
+Mitigations:
+- **Use the CivTAK APK directly** from [civtak.org](https://www.civtak.org) — no Play Store account required.
+- **Use a dedicated device** with no Google account ever signed in. Factory reset any device before RTAK use if a Google account was previously linked — factory reset alone does not purge the associated device identity from Google's records.
+- **Use GrapheneOS** — removes Play Services entirely. Install ATAK via the APK sideload method.
+- If Play Store APKs must be used: a sandboxed Play Store profile (GrapheneOS feature) contains Play Services to a single unprivileged app, preventing it from accessing other apps' data.
+
 ---
 
 ## Satellite Map Imagery — Technical Note

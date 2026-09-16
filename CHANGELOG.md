@@ -4,6 +4,31 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 
 ---
 
+## v1.0.5
+**Changed:** `prototype.py`
+
+Panic wipe system and HTTP control panel.
+
+- **Panic wipe command** — sending an LXMF message titled `"panic"` from a trusted peer triggers immediate deletion of all records from the FTS SQLite database (`/opt/rtak/fts_data.db`) on the receiving node. The wipe command does not re-propagate from the receiving node to prevent loop storms; a single initiating node propagates to all peers.
+- **HTTP control panel** — a minimal HTTP server starts on port 8888 (LAN-accessible from any browser, including ATAK's built-in browser). Bookmarking `http://<node-ip>:8888/` gives any operator a one-tap panic button without leaving ATAK. Endpoint: `POST /panic` triggers local wipe plus Reticulum propagation to all peers.
+- **`_wipe_fts_logs()`** — enumerates all SQLite tables in the FTS database and runs `DELETE FROM <table>` on each, wiping all stored CoT events, chat messages, and user connection history.
+- **`_propagate_panic()`** — iterates `rtak_peers.txt` and sends a signed LXMF `"panic"` message to each trusted peer.
+- **`--panic-port`** CLI argument — override the HTTP control panel port (default 8888).
+
+**Changed (no tag):** `setup_pi.sh`
+
+Added two new provisioning steps (now 8 total):
+
+- **Step 7 — chrony local NTP** — configures the OmniNode as a LAN NTP server. `local stratum 10` fallback ensures LAN clients maintain consistent time even when no internet NTP is reachable. Android clients should point to the Pi's IP as their NTP server (Developer Options, or GrapheneOS network time settings) to eliminate `time.google.com` contact.
+- **Step 8 — dnsmasq DNS sinkhole** — binds to the LAN-facing interface; all external DNS queries from LAN clients return NXDOMAIN. The Pi's own DNS continues through systemd-resolved. Reticulum is unaffected (uses cryptographic hashes, not hostnames). Android clients point to the Pi's IP as their DNS server via WiFi advanced settings.
+- UFW: added rules for port 8888/tcp (panic panel), 53/udp (DNS sinkhole), 123/udp (NTP).
+
+**Changed (no tag):** `README.md`
+
+Added **Google Play Store as a Leak Vector** section to the Android Client Security technical note. Documents that Play Store installations create a cloud-linked device identity; recommends CivTAK APK direct install, dedicated hardware, and GrapheneOS sandboxed Play Store profile as mitigations.
+
+---
+
 ## rtak-maps-v1
 **Added:** `rtak_maps/`
 
