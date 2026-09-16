@@ -7,8 +7,10 @@
 #   2. Installs Python deps: rns, lxmf, pytak, FreeTAKServer
 #   3. Deploys the RTAK bridge to /opt/rtak
 #   4. Writes a Reticulum config for dual RNodes (915 + 433 MHz) + WiFi
-#   5. Installs systemd services for FreeTAKServer and the bridge
-#   6. Enables both services to start at boot
+#   5. Generates a private CA + server TLS cert for FTS (SSL CoT on 8089)
+#   6. Hardens firewall: blocks plain-text port 8087, allows only 8089 + SSH
+#   7. Installs systemd services for FreeTAKServer and the bridge
+#   8. Enables both services to start at boot
 #
 # Usage:
 #   sudo bash setup_pi.sh
@@ -19,6 +21,8 @@
 #   3. Edit /etc/reticulum/config if port names differ from defaults
 #   4. sudo systemctl start freetakserver rtak-bridge
 #   5. Note the bridge hash printed in: journalctl -u rtak-bridge -f
+#   6. Generate per-user client certs: sudo bash /opt/rtak/generate_user_cert.sh <username>
+#      Import the resulting <username>.p12 into ATAK as a trust store
 
 set -euo pipefail
 
@@ -40,6 +44,10 @@ TXPOWER=17                # dBm — 17 dBm (~50 mW), legal everywhere
 SF=8                      # Spreading factor 8 — good balance
 CR=5                      # Coding rate 4/5
 
+CERTS_DIR="$RTAK_HOME/certs"
+CA_DAYS=3650    # 10-year CA
+CERT_DAYS=3650  # 10-year leaf certs (adjust to taste)
+
 echo "=== RTAK Node Setup ==="
 echo "Target: $RTAK_HOME"
 echo "RNode 915: $PORT_915"
@@ -53,7 +61,7 @@ echo "[1/6] Updating system packages..."
 apt-get update -qq
 apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
-    git usbutils
+    git usbutils openssl ufw
 
 # ---------------------------------------------------------------------------
 # 2. Flash RNode firmware (requires boards to be plugged in)
@@ -147,22 +155,123 @@ RETCONFIG
 echo "  Reticulum config written to $RNS_CONFIG/config"
 
 # ---------------------------------------------------------------------------
-# 5. FreeTAKServer
+# 5. TLS certificates (private CA + server cert for FTS)
 # ---------------------------------------------------------------------------
-echo "[5/6] Installing FreeTAKServer..."
+echo "[5a/6] Generating RTAK private CA and server certificates..."
+mkdir -p "$CERTS_DIR"
+chmod 700 "$CERTS_DIR"
+
+# Private CA
+openssl genrsa -out "$CERTS_DIR/ca.key" 4096 2>/dev/null
+openssl req -new -x509 -days $CA_DAYS \
+    -key "$CERTS_DIR/ca.key" \
+    -out "$CERTS_DIR/ca.crt" \
+    -subj "/CN=RTAK-CA/O=RTAK/OU=TacticalComms/C=US" 2>/dev/null
+echo "  CA cert: $CERTS_DIR/ca.crt"
+
+# Server cert (signed by RTAK-CA)
+openssl genrsa -out "$CERTS_DIR/server.key" 2048 2>/dev/null
+openssl req -new \
+    -key "$CERTS_DIR/server.key" \
+    -out "$CERTS_DIR/server.csr" \
+    -subj "/CN=rtak-server/O=RTAK/OU=TacticalComms/C=US" 2>/dev/null
+openssl x509 -req -days $CERT_DAYS \
+    -in "$CERTS_DIR/server.csr" \
+    -CA "$CERTS_DIR/ca.crt" \
+    -CAkey "$CERTS_DIR/ca.key" \
+    -CAcreateserial \
+    -out "$CERTS_DIR/server.crt" 2>/dev/null
+
+# PKCS12 bundle for FTS (FTS expects .p12)
+openssl pkcs12 -export \
+    -out "$CERTS_DIR/server.p12" \
+    -inkey "$CERTS_DIR/server.key" \
+    -in "$CERTS_DIR/server.crt" \
+    -certfile "$CERTS_DIR/ca.crt" \
+    -passout pass:rtak_server 2>/dev/null
+echo "  Server cert bundle: $CERTS_DIR/server.p12"
+
+# Helper script to generate per-user client certs
+cat > "$RTAK_HOME/generate_user_cert.sh" <<'GENCERT'
+#!/usr/bin/env bash
+# Usage: sudo bash generate_user_cert.sh <username>
+# Outputs: /opt/rtak/certs/<username>.p12
+# Import that file into ATAK as a trust store (password: rtak_user)
+set -euo pipefail
+USERNAME="${1:?Usage: $0 <username>}"
+CERTS="/opt/rtak/certs"
+CERT_DAYS=3650
+
+openssl genrsa -out "$CERTS/$USERNAME.key" 2048 2>/dev/null
+openssl req -new \
+    -key "$CERTS/$USERNAME.key" \
+    -out "$CERTS/$USERNAME.csr" \
+    -subj "/CN=$USERNAME/O=RTAK/OU=TacticalComms/C=US" 2>/dev/null
+openssl x509 -req -days $CERT_DAYS \
+    -in "$CERTS/$USERNAME.csr" \
+    -CA "$CERTS/ca.crt" \
+    -CAkey "$CERTS/ca.key" \
+    -CAcreateserial \
+    -out "$CERTS/$USERNAME.crt" 2>/dev/null
+openssl pkcs12 -export \
+    -out "$CERTS/$USERNAME.p12" \
+    -inkey "$CERTS/$USERNAME.key" \
+    -in "$CERTS/$USERNAME.crt" \
+    -certfile "$CERTS/ca.crt" \
+    -passout pass:rtak_user 2>/dev/null
+
+chmod 600 "$CERTS/$USERNAME.p12"
+echo "User cert created: $CERTS/$USERNAME.p12"
+echo "Import into ATAK as a trust store. Password: rtak_user"
+GENCERT
+chmod +x "$RTAK_HOME/generate_user_cert.sh"
+echo "  User cert helper: $RTAK_HOME/generate_user_cert.sh"
+
+# Lock down cert files
+chown -R "$RTAK_USER:$RTAK_USER" "$CERTS_DIR"
+chmod 600 "$CERTS_DIR"/*.key "$CERTS_DIR"/*.p12 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# 5b. Firewall hardening
+# ---------------------------------------------------------------------------
+echo "[5b/6] Hardening firewall..."
+ufw --force reset >/dev/null
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow ssh
+ufw allow 8089/tcp comment "FTS SSL CoT (ATAK clients)"
+ufw allow 8080/tcp comment "FTS data packages"
+# Port 8087 (plain-text CoT) intentionally NOT opened
+ufw --force enable
+echo "  UFW enabled. Open ports: 22 (SSH), 8089 (SSL CoT), 8080 (data packages)"
+echo "  Port 8087 (plain-text CoT) is BLOCKED"
+
+# ---------------------------------------------------------------------------
+# 5c. FreeTAKServer with SSL
+# ---------------------------------------------------------------------------
+echo "[5c/6] Installing FreeTAKServer..."
 pip3 install --quiet FreeTAKServer
 
-# Minimal FTS config — listens on all interfaces, CoT on TCP 8087
 FTS_CONFIG="/etc/freetakserver"
 mkdir -p "$FTS_CONFIG"
 cat > "$FTS_CONFIG/FreeTAKServerConfig.py" <<FTSCONFIG
-# FreeTAKServer minimal config for RTAK node
+# FreeTAKServer config for RTAK node — SSL only, no plain-text CoT
 IP = '0.0.0.0'
-CoTServicePort = 8087
-SSLCoTServicePort = 8089
+CoTServicePort = 8087          # Kept for local bridge connection (loopback only)
+SSLCoTServicePort = 8089       # External ATAK clients connect here (SSL + client cert)
 DataPackageServiceDefaultPort = 8080
 UserConnectionString = 'sqlite:////opt/rtak/fts_data.db'
 MainLoopDelay = 1
+
+# TLS — server identity
+pemDir = '/opt/rtak/certs'
+certPath = '/opt/rtak/certs/server.p12'
+keyDir = '/opt/rtak/certs'
+unencryptedKey = 'server.key'
+P12Password = 'rtak_server'
+
+# CA trust store — only clients with certs signed by RTAK-CA are accepted
+CA = '/opt/rtak/certs/ca.crt'
 FTSCONFIG
 
 # FTS systemd unit
@@ -190,7 +299,8 @@ FTSSVC
 # ---------------------------------------------------------------------------
 # 6. RTAK bridge systemd unit
 # ---------------------------------------------------------------------------
-echo "[6/6] Installing RTAK bridge systemd service..."
+echo "[6/6] Installing RTAK bridge systemd service...
+Note: bridge connects to FTS on loopback 8087 (not firewalled for 127.0.0.1)."
 cat > /etc/systemd/system/rtak-bridge.service <<BRIDGESVC
 [Unit]
 Description=RTAK Bridge — CoT over Reticulum
@@ -229,11 +339,26 @@ echo ""
 echo "  3. Check bridge is running and note your node hash:"
 echo "     sudo journalctl -u rtak-bridge -f"
 echo ""
-echo "  4. Share your hash with other node operators."
+echo "  4. Share your Reticulum hash with other node operators."
 echo "     Add their hashes to $RTAK_HOME/rtak_peers.txt (one per line)"
+echo "     Only peers listed here can send CoT to your node."
 echo ""
-echo "  5. Point ATAK clients at this Pi's IP on port 8087 (TCP CoT)"
+echo "  5. Generate a client cert for each ATAK operator:"
+echo "     sudo bash $RTAK_HOME/generate_user_cert.sh <callsign>"
+echo "     Import <callsign>.p12 into ATAK → Settings → Network → Manage Server Connections"
+echo "     Password: rtak_user"
 echo ""
-echo "FTS data:    $RTAK_HOME/fts_data.db"
-echo "RNS config:  $RNS_CONFIG/config"
-echo "Peer list:   $RTAK_HOME/rtak_peers.txt"
+echo "  6. Point ATAK clients at this Pi's IP on port 8089 (SSL CoT)"
+echo "     Port 8087 (plain-text) is firewalled — clients must use SSL."
+echo ""
+echo "Security summary:"
+echo "  LoRa/Reticulum transport:  E2E encrypted (Reticulum default)"
+echo "  ATAK → FTS connection:     TLS mutual auth (client cert required)"
+echo "  Inbound bridge relay:      Whitelist-only (rtak_peers.txt)"
+echo "  Firewall:                  UFW — only SSH, 8089, 8080 open"
+echo ""
+echo "FTS data:       $RTAK_HOME/fts_data.db"
+echo "RNS config:     $RNS_CONFIG/config"
+echo "Peer list:      $RTAK_HOME/rtak_peers.txt"
+echo "Certs:          $CERTS_DIR/"
+echo "User cert tool: $RTAK_HOME/generate_user_cert.sh"

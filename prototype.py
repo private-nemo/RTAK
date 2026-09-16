@@ -247,6 +247,19 @@ class RTAKBridge:
             if message.title_as_string != "cot":
                 log.debug(f"Ignoring non-CoT LXMF message (title={message.title_as_string!r})")
                 return
+
+            # Reject inbound CoT from any source not in the trusted peer list.
+            # This prevents a rogue or unknown node from injecting false tracks
+            # into FreeTAKServer and poisoning the operator's map.
+            source_hex = message.source_hash.hex()
+            trusted = self._load_peers()
+            if source_hex not in trusted:
+                log.warning(
+                    f"REJECTED inbound CoT from untrusted source {source_hex[:16]}… "
+                    f"— add to rtak_peers.txt to allow"
+                )
+                return
+
             cot_xml = zlib.decompress(message.content)
             log.info(
                 f"Inbound CoT from {RNS.prettyhexrep(message.source_hash)}: {len(cot_xml)}b"
