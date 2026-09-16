@@ -158,18 +158,47 @@ systemctl enable rtak-satmap
 systemctl start rtak-satmap
 
 echo ""
+NODE_IP="$(hostname -I | awk '{print $1}')"
+
+# Write a pre-filled ATAK map source XML so operators don't have to edit anything
+PREFILLED_XML="$SATMAP_DIR/atak_satmap_source.xml"
+cat > "$PREFILLED_XML" <<ATKXML
+<?xml version="1.0" encoding="UTF-8"?>
+<customMapSource>
+    <name>RTAK SatMap — Latest Pass</name>
+    <minZoom>3</minZoom>
+    <maxZoom>12</maxZoom>
+    <type>tms</type>
+    <url>http://${NODE_IP}:${TILE_PORT}/latest/{z}/{x}/{y}.png</url>
+    <backgroundColor>#00000000</backgroundColor>
+</customMapSource>
+ATKXML
+chown "$RTAK_USER:$RTAK_USER" "$PREFILLED_XML"
+echo "  Pre-filled ATAK source XML: $PREFILLED_XML"
+
+echo ""
 echo "=== SatMap setup complete ==="
 echo ""
 echo "Status:       sudo systemctl status rtak-satmap"
 echo "Live log:     sudo journalctl -u rtak-satmap -f"
-echo "Tile server:  http://$(hostname -I | awk '{print $1}'):$TILE_PORT/"
-echo "ATAK source:  http://$(hostname -I | awk '{print $1}'):$TILE_PORT/latest/{z}/{x}/{y}.png"
+echo "Tile server:  http://${NODE_IP}:${TILE_PORT}/"
+echo "ATAK source:  http://${NODE_IP}:${TILE_PORT}/latest/{z}/{x}/{y}.png"
 echo ""
-echo "ATAK map source setup:"
-echo "  1. Copy atak_satmap_source.xml to /sdcard/atak/imagery/ on each device"
-echo "     (edit <node-ip> in the file first)"
-echo "  2. In ATAK: Map → Layers — the SatMap layer appears automatically"
-echo "  3. Satellite imagery updates after each decoded pass (~90 min cycle)"
+echo "ATAK map source setup (three ways — pick one):"
+echo ""
+echo "  Option A — Download from tile server (easiest, no USB needed):"
+echo "    In ATAK's built-in browser, open:"
+echo "      http://${NODE_IP}:${TILE_PORT}/source.xml"
+echo "    Android will prompt to save/import the file. Save to /sdcard/atak/imagery/"
+echo ""
+echo "  Option B — Copy pre-filled XML via USB:"
+echo "    adb push $PREFILLED_XML /sdcard/atak/imagery/"
+echo ""
+echo "  Option C — Manual (edit <node-ip> yourself):"
+echo "    Copy rtak_satmap/atak_satmap_source.xml and replace <node-ip> with ${NODE_IP}"
+echo ""
+echo "  Then in ATAK: Map → Layers → enable 'RTAK SatMap — Latest Pass'"
+echo "  Satellite imagery updates after each decoded pass (~90 min cycle)"
 echo ""
 echo "Hardware check:"
 echo "  RTL-SDR detected: $(lsusb 2>/dev/null | grep -i rtl || echo 'not detected — plug in RTL-SDR')"

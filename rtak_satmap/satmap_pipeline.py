@@ -309,12 +309,24 @@ class _TileHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # suppress per-request logs
 
+    def _client_facing_host(self) -> str:
+        """Return the IP the client used to reach us — correct regardless of aliases."""
+        host_header = self.headers.get("Host", "")
+        if host_header:
+            return host_header.split(":")[0]
+        return self.server.server_address[0]
+
     def do_GET(self):
         # Strip leading slash and resolve path under TILE_DIR
-        rel = self.path.lstrip("/")
+        rel = self.path.lstrip("/").split("?")[0]
         target = TILE_DIR / rel
 
-        # Index page
+        # Auto-filled ATAK map source XML
+        if rel == "source.xml":
+            self._send_source_xml()
+            return
+
+        # Index / status page
         if rel in ("", "index.html"):
             self._send_index()
             return
@@ -333,18 +345,42 @@ class _TileHandler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _send_source_xml(self):
+        """Return a ready-to-use ATAK customMapSource XML with the node IP auto-filled."""
+        host = self._client_facing_host()
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<customMapSource>\n"
+            "    <name>RTAK SatMap — Latest Pass</name>\n"
+            "    <minZoom>3</minZoom>\n"
+            "    <maxZoom>12</maxZoom>\n"
+            "    <type>tms</type>\n"
+            f"    <url>http://{host}:{TILE_PORT}/latest/{{z}}/{{x}}/{{y}}.png</url>\n"
+            "    <backgroundColor>#00000000</backgroundColor>\n"
+            "</customMapSource>\n"
+        )
+        body = xml.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/xml")
+        self.send_header("Content-Disposition", 'attachment; filename="rtak_satmap_source.xml"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _send_index(self):
+        host = self._client_facing_host()
         latest = TILE_DIR / "latest"
-        target = latest.resolve().name if latest.is_symlink() else "none"
+        tileset = latest.resolve().name if latest.is_symlink() else "none"
         passes = []
         if PASS_LOG.exists():
             with open(PASS_LOG) as f:
                 passes = [json.loads(l) for l in f if l.strip()][-10:]
         body = json.dumps({
             "status": "ok",
-            "latest_tileset": target,
+            "latest_tileset": tileset,
+            "source_xml_url": f"http://{host}:{TILE_PORT}/source.xml",
+            "tile_url_template": f"http://{host}:{TILE_PORT}/latest/{{z}}/{{x}}/{{y}}.png",
             "recent_passes": passes,
-            "tile_url_template": f"http://<node-ip>:{TILE_PORT}/latest/{{z}}/{{x}}/{{y}}.png",
         }, indent=2).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

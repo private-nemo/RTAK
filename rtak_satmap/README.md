@@ -103,20 +103,29 @@ You should see TLE download, pass predictions, and the next scheduled recording 
 
 ## ATAK Setup (per device)
 
-### Step 1 — Copy the map source file
+### Step 1 — Get the map source file
 
-Edit `atak_satmap_source.xml`, replace `<node-ip>` with your OmniNode's LAN IP, then copy to the device:
+The tile server auto-fills its own IP address in the map source XML. No manual editing needed.
+
+**Option A — Download directly from ATAK's built-in browser (no USB required):**
+
+1. In ATAK, open the built-in browser and navigate to:
+   ```
+   http://<node-ip>:8889/source.xml
+   ```
+2. Android prompts to save the file — save to `/sdcard/atak/imagery/`
+
+**Option B — Copy via USB:**
+
+After running `setup_satmap.sh`, a pre-filled XML is written to `/opt/rtak/satmap/atak_satmap_source.xml` with the correct node IP already embedded:
 
 ```bash
-# Replace 192.168.1.100 with your OmniNode's actual LAN IP
-sed 's/<node-ip>/192.168.1.100/g' rtak_satmap/atak_satmap_source.xml \
-    > /tmp/rtak_satmap_source.xml
-
-# Transfer to Android via USB:
-adb push /tmp/rtak_satmap_source.xml /sdcard/atak/imagery/
+adb push /opt/rtak/satmap/atak_satmap_source.xml /sdcard/atak/imagery/
 ```
 
-Or copy the file manually via USB file transfer.
+**Option C — Manual fallback:**
+
+Edit `rtak_satmap/atak_satmap_source.xml`, replace `<node-ip>` with the OmniNode's LAN IP, and copy to `/sdcard/atak/imagery/`.
 
 ### Step 2 — Enable the layer in ATAK
 
