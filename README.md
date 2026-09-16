@@ -215,6 +215,40 @@ Two OmniNodes form a functional network. One node runs FreeTAKServer as the prim
 
 ---
 
+## Android Client Security — Technical Note
+
+RTAK secures all data **in transit** between nodes. What it does not and cannot protect is data once it is decrypted inside the ATAK app on the Android device.
+
+### What RTAK protects
+
+| Path | Mechanism |
+|---|---|
+| Node-to-node relay over LoRa / WiFi / AX.25 | Reticulum E2E encryption (Curve25519 + AES) |
+| ATAK client → FTS connection | TLS mutual authentication, client certificate required |
+| LXMF relay between OmniNodes | Reticulum E2E — intermediate relay nodes cannot read payload |
+
+### What RTAK does NOT protect
+
+Once CoT XML arrives at the ATAK app and is decrypted, it lives in process memory on the Android device. At that point:
+
+- The **Android kernel** (running as root) has access to every app's memory
+- **Google Play Services**, if present on the device, holds system-level privileges that effectively bypass the app sandbox
+- The **baseband processor** (radio chipset) is separate, largely unaudited firmware that can observe device-level behavior
+
+This is a fundamental property of running on commercial Android — not a gap in RTAK's design. The TLS layer and Reticulum encryption protect the wire; they cannot protect against the OS the app is running inside.
+
+### Mitigations (in order of effectiveness)
+
+1. **GrapheneOS** — hardened Android fork with no Google services, stronger process isolation, and verified boot. ATAK runs on GrapheneOS. This eliminates the Google Play Services attack surface entirely. Recommended for any sensitive deployment.
+
+2. **Dedicated hardware with MDM** — dedicated device you fully control, no commercial app stores, no Google account linked. Standard practice in formal military ATAK deployments.
+
+3. **Limit data on device** — peer whitelisting in `rtak_peers.txt` already restricts which nodes can push CoT to your network. Only distribute data to devices that need it. Compartmentalization reduces exposure even if a device is compromised.
+
+For a small trusted team on personally-owned phones, the practical risk is primarily network interception — which RTAK addresses well. If the threat model includes a hostile OS or device vendor, GrapheneOS is the correct layer to address it, not additional network-level crypto.
+
+---
+
 ## Repository
 
 <https://github.com/private-nemo/RTAK>
