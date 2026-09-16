@@ -4,6 +4,15 @@ A self-contained tactical communications node that bridges ATAK/CoT situational 
 
 ---
 
+## Hardware Overview
+
+| | | |
+|:---:|:---:|:---:|
+| ![Raspberry Pi 4B](assets/pi4b.jpg) | ![LilyGO T-Beam Supreme — 915 MHz RNode](assets/tbeam-supreme.jpg) | ![LilyGO T-Beam v1.1 — 433 MHz RNode](assets/tbeam-v11.jpg) |
+| Raspberry Pi 4B | T-Beam Supreme (915 MHz) | T-Beam v1.1 (433 MHz) |
+
+---
+
 ## Bill of Materials — Per Node
 
 ### Compute
@@ -63,6 +72,10 @@ A self-contained tactical communications node that bridges ATAK/CoT situational 
 
 ### 2. Assemble the Pi
 
+![Raspberry Pi 4B](assets/pi4b.jpg)
+
+> *To add photos of the Argon NEO case and Waveshare UPS HAT C: download product images from [argon40.com](https://www.argon40.com/products/argon-neo-raspberry-pi-4-case) and [waveshare.com](https://www.waveshare.com/wiki/UPS_HAT_(C)) and save as `assets/argon-neo.jpg` and `assets/waveshare-ups.jpg`.*
+
 1. Seat the Pi into the Argon NEO case. The case acts as a heatsink — no thermal paste needed; press the SoC firmly against the case interior.
 2. Stack the Waveshare UPS HAT (C) on the Pi's GPIO header.
 3. Insert two fully-charged 21700 cells into the UPS HAT battery holder, observing polarity.
@@ -71,6 +84,11 @@ A self-contained tactical communications node that bridges ATAK/CoT situational 
 ---
 
 ### 3. Flash RNode firmware onto both T-Beams
+
+| | |
+|:---:|:---:|
+| ![LilyGO T-Beam Supreme — 915 MHz](assets/tbeam-supreme.jpg) | ![LilyGO T-Beam v1.1 — 433 MHz](assets/tbeam-v11.jpg) |
+| T-Beam Supreme (915 MHz, SX1262) | T-Beam v1.1 (433 MHz, SX1278) |
 
 Do this from any Linux/Mac/Windows machine with Python installed before connecting the T-Beams to the Pi.
 
@@ -93,6 +111,9 @@ When prompted, select the correct board variant (T-Beam / T-Beam Supreme). The f
 1. Connect the 915 MHz T-Beam Supreme to the USB hub via USB-C.
 2. Connect the 433 MHz T-Beam v1.1 to the USB hub via USB or Micro-USB.
 3. *(If using AX.25):* Connect Digirig Mobile to the USB hub. Connect the Kenwood cable from Digirig to the radio's speaker/mic port.
+
+   ![Digirig Mobile — USB digital modes interface](assets/digirig.jpg)
+
 4. Verify port assignments on the Pi: `ls /dev/ttyUSB*` — note which port is which board (unplug one at a time to confirm).
 
 ---
