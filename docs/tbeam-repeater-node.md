@@ -118,3 +118,16 @@ T-Beam Supreme on 915 MHz — exactly the dual-RNode setup in this repo's RTAK O
 - Reticulum Network Stack docs: https://reticulum.network
 - RNode firmware / rnodeconf: https://github.com/markqvist/RNode_Firmware
 - r/meshtastic repeater thread (build suggestions, 2026)
+
+---
+
+## Further Reading (Video)
+
+- **The Tech Prepper** — "Reticulum - Wi-Fi + LoRa RNode Transport Architecture and Field Test" (~10 min)
+  YouTube search: `Reticulum Wi-Fi LoRa RNode Transport Architecture Field Test The Tech Prepper`
+
+- **Dude Tested** — "Building a Meshtastic Spec 5 Trekker / Lilygo T-BEAM Node" (~5 min, #hamradio)
+  YouTube search: `Building Meshtastic Spec 5 Trekker Lilygo T-BEAM Node Dude Tested`
+
+> Note: Meshtastic content is relevant for hardware technique and enclosure ideas even though
+> RTAK uses Reticulum rather than Meshtastic firmware.
