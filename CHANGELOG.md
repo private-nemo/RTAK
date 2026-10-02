@@ -5,9 +5,9 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 ---
 
 ## rtak-wizard-v1.0
-**Added:** `rtak_wizard/`
+**Moved:** `rtak_wizard/` → [github.com/private-nemo/mesh-config-wizard](https://github.com/private-nemo/mesh-config-wizard)
 
-Single-file browser-based setup wizard for RTAK OmniNode and mesh_babelfish.
+The setup wizard has been split out into its own standalone repository. `rtak_wizard/` now contains only a README pointing there.
 
 - No dependencies beyond Python 3 stdlib — just `python3 wizard.py`
 - Auto-opens browser; also accessible from any device on the local network
@@ -17,10 +17,12 @@ Single-file browser-based setup wizard for RTAK OmniNode and mesh_babelfish.
 - Dark terminal aesthetic; multi-step wizard with progress indicators
 - `--port` and `--no-browser` flags for headless/custom deployments
 
-Run:
+Get it:
 
 ```
-python3 rtak_wizard/wizard.py
+git clone https://github.com/private-nemo/mesh-config-wizard
+cd mesh-config-wizard
+python3 wizard.py
 ```
 
 ---
