@@ -4,6 +4,27 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 
 ---
 
+## rtak-wizard-v1.0
+**Added:** `rtak_wizard/`
+
+Single-file browser-based setup wizard for RTAK OmniNode and mesh_babelfish.
+
+- No dependencies beyond Python 3 stdlib — just `python3 wizard.py`
+- Auto-opens browser; also accessible from any device on the local network
+- RTAK flow: hardware variant → radio ports → RF settings → optional services → operators → generates setup command, Reticulum config, Partyline config, cert commands, passwords
+- BabelFish flow: protocol selection → port assignments → session settings → generates complete config.yaml
+- All output sections have one-click copy buttons
+- Dark terminal aesthetic; multi-step wizard with progress indicators
+- `--port` and `--no-browser` flags for headless/custom deployments
+
+Run:
+
+```
+python3 rtak_wizard/wizard.py
+```
+
+---
+
 ## rtak-voice-v1.0
 **Added:** `rtak_voice/`
 
