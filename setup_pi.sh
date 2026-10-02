@@ -54,6 +54,11 @@ CERTS_DIR="$RTAK_HOME/certs"
 CA_DAYS=3650    # 10-year CA
 CERT_DAYS=3650  # 10-year leaf certs (adjust to taste)
 
+# TLS passwords — override via environment or auto-generated at runtime
+# Example: RTAK_SERVER_PASS=mysecret sudo bash setup_pi.sh
+SERVER_P12_PASS="${RTAK_SERVER_PASS:-$(openssl rand -hex 20)}"
+USER_P12_PASS="${RTAK_USER_PASS:-$(openssl rand -hex 20)}"
+
 echo "=== RTAK Node Setup ==="
 echo "Target: $RTAK_HOME"
 echo "RNode 915: $PORT_915"
@@ -201,19 +206,32 @@ openssl pkcs12 -export \
     -inkey "$CERTS_DIR/server.key" \
     -in "$CERTS_DIR/server.crt" \
     -certfile "$CERTS_DIR/ca.crt" \
-    -passout pass:rtak_server 2>/dev/null
+    -passout pass:"$SERVER_P12_PASS" 2>/dev/null
 echo "  Server cert bundle: $CERTS_DIR/server.p12"
+
+# Save generated passwords to a protected file (read back by FTS config and helpers)
+printf 'SERVER_P12_PASS=%s\nUSER_P12_PASS=%s\n' "$SERVER_P12_PASS" "$USER_P12_PASS" \
+    > "$CERTS_DIR/passwords.txt"
+chmod 600 "$CERTS_DIR/passwords.txt"
+echo "  Passwords saved to $CERTS_DIR/passwords.txt (chmod 600)"
 
 # Helper script to generate per-user client certs
 cat > "$RTAK_HOME/generate_user_cert.sh" <<'GENCERT'
 #!/usr/bin/env bash
 # Usage: sudo bash generate_user_cert.sh <username>
 # Outputs: /opt/rtak/certs/<username>.p12
-# Import that file into ATAK as a trust store (password: rtak_user)
+# Import that file into ATAK as a trust store
 set -euo pipefail
 USERNAME="${1:?Usage: $0 <username>}"
 CERTS="/opt/rtak/certs"
 CERT_DAYS=3650
+
+# Read user cert password from passwords file (written by setup script)
+USER_P12_PASS=$(grep '^USER_P12_PASS=' "$CERTS/passwords.txt" | cut -d= -f2)
+if [ -z "$USER_P12_PASS" ]; then
+    echo "ERROR: Could not read USER_P12_PASS from $CERTS/passwords.txt" >&2
+    exit 1
+fi
 
 openssl genrsa -out "$CERTS/$USERNAME.key" 2048 2>/dev/null
 openssl req -new \
@@ -231,11 +249,11 @@ openssl pkcs12 -export \
     -inkey "$CERTS/$USERNAME.key" \
     -in "$CERTS/$USERNAME.crt" \
     -certfile "$CERTS/ca.crt" \
-    -passout pass:rtak_user 2>/dev/null
+    -passout pass:"$USER_P12_PASS" 2>/dev/null
 
 chmod 600 "$CERTS/$USERNAME.p12"
 echo "User cert created: $CERTS/$USERNAME.p12"
-echo "Import into ATAK as a trust store. Password: rtak_user"
+echo "Import password: $(grep '^USER_P12_PASS=' /opt/rtak/certs/passwords.txt | cut -d= -f2)"
 GENCERT
 chmod +x "$RTAK_HOME/generate_user_cert.sh"
 echo "  User cert helper: $RTAK_HOME/generate_user_cert.sh"
@@ -285,7 +303,7 @@ pemDir = '/opt/rtak/certs'
 certPath = '/opt/rtak/certs/server.p12'
 keyDir = '/opt/rtak/certs'
 unencryptedKey = 'server.key'
-P12Password = 'rtak_server'
+P12Password = '$SERVER_P12_PASS'
 
 # CA trust store — only clients with certs signed by RTAK-CA are accepted
 CA = '/opt/rtak/certs/ca.crt'
@@ -450,7 +468,7 @@ echo ""
 echo "  5. Generate a client cert for each ATAK operator:"
 echo "     sudo bash $RTAK_HOME/generate_user_cert.sh <callsign>"
 echo "     Import <callsign>.p12 into ATAK → Settings → Network → Manage Server Connections"
-echo "     Password: rtak_user"
+echo "     Password: see $CERTS_DIR/passwords.txt (USER_P12_PASS)"
 echo ""
 echo "  6. Point ATAK clients at this Pi's IP on port 8089 (SSL CoT)"
 echo "     Port 8087 (plain-text) is firewalled — clients must use SSL."
