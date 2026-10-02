@@ -4,6 +4,21 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 
 ---
 
+## omninode-heltec-v4-v1.0
+**Added:** `omninode_heltec_v4/`
+
+Heltec WiFi LoRa 32 V4 variant of the RTAK OmniNode.
+
+- Base build: single Heltec V4 at 915 MHz (SX1262) — ~$40–80 less than T-Beam reference build
+- Optional dual-band: second radio (V4 470 SKU, T-Beam v1.1, or V3) for 433 MHz
+- Same RTAK software stack and security model as all other builds
+- Key differences vs T-Beam: no onboard GPS, no 18650 holder, built-in OLED status display, smaller footprint (57 × 25 mm vs 120 × 35 mm)
+- GPS options documented: static config, USB dongle, or hybrid T-Beam slot
+- udev stable port naming instructions included
+- Comparison table vs reference Pi 4B and Orange Pi Zero 2W builds
+
+---
+
 ## rtak-satmap-v1.1
 **Changed:** `rtak_satmap/`
 
