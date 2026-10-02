@@ -1,0 +1,39 @@
+{
+  "name": "RTAK Voice",
+  "description": "Encrypted group PTT voice — RTAK OmniNode",
+
+  "rooms": [
+    {
+      "name": "Ops",
+      "description": "Primary operations net",
+      "codec": "c2-700",
+      "access": "identified"
+    },
+    {
+      "name": "Admin",
+      "description": "Node operators only",
+      "codec": "c2-1200",
+      "access": "allowlist",
+      "allow": []
+    },
+    {
+      "name": "Open",
+      "description": "Open room — any verified identity",
+      "codec": "c2-700",
+      "access": "open"
+    }
+  ],
+
+  "dial_in": {
+    "enabled": true,
+    "default_room": "Ops"
+  },
+
+  "_notes": [
+    "codec options for LoRa links: c2-700 (700 bps), c2-1200 (1200 bps), c2-2400 (2400 bps)",
+    "codec options for fast links: opus-low (6 kbps), opus-med (8 kbps), opus-high (16 kbps)",
+    "access: open = anyone; identified = any Reticulum identity; allowlist = identity hashes in allow[]",
+    "dial_in: Sideband and MeshChatX can call the server hash and land in default_room",
+    "Add trusted operator identity hashes to the Admin room allow[] array"
+  ]
+}

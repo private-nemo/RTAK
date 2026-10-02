@@ -4,6 +4,22 @@ Bridge code revisions follow the `v1.0.x` scheme. Modules and subdirectories use
 
 ---
 
+## rtak-voice-v1.0
+**Added:** `rtak_voice/`
+
+Encrypted group PTT voice via Partyline + LXST, integrated into the OmniNode.
+
+- `partyline-server` added as optional step 9 in `setup_pi.sh` (default: installed)
+- Skip with `INSTALL_PARTYLINE=no sudo bash setup_pi.sh`
+- Default room config: Ops (Codec2-700, identified), Admin (Codec2-1200, allowlist), Open (Codec2-700, open)
+- Partyline uses Reticulum transport — no new firewall ports required
+- Sideband (Android) and MeshChatX can dial in directly to rooms
+- LoRa constraints documented: half-duplex PTT, Codec2-700 at ~1 kbps fits LoRa budget
+- lxst_phone (desktop P2P) and Sideband voice messages also documented
+- `rtak_voice/README.md` — full operator guide including room management and Android setup
+
+---
+
 ## omninode-heltec-v4-v1.0
 **Added:** `omninode_heltec_v4/`
 

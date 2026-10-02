@@ -17,6 +17,7 @@
 #
 # Usage:
 #   sudo bash setup_pi.sh
+#   INSTALL_PARTYLINE=no sudo bash setup_pi.sh   # skip voice server
 #
 # After running:
 #   1. Plug in both T-Beam RNodes via USB
@@ -49,6 +50,9 @@ BANDWIDTH=125000          # 125 kHz — balanced range vs speed
 TXPOWER=17                # dBm — 17 dBm (~50 mW), legal everywhere
 SF=8                      # Spreading factor 8 — good balance
 CR=5                      # Coding rate 4/5
+
+INSTALL_PARTYLINE="${INSTALL_PARTYLINE:-yes}"
+PARTYLINE_DIR="$RTAK_HOME/partyline"
 
 CERTS_DIR="$RTAK_HOME/certs"
 CA_DAYS=3650    # 10-year CA
@@ -449,6 +453,57 @@ echo "  Android: enable per-network MAC randomization in WiFi settings"
 echo "  GrapheneOS: this is already enabled by default"
 
 echo ""
+# ---------------------------------------------------------------------------
+# 9. Partyline — encrypted group PTT voice server (optional)
+# ---------------------------------------------------------------------------
+if [ "$INSTALL_PARTYLINE" = "yes" ]; then
+    echo "[9/9] Installing Partyline voice server..."
+    apt-get install -y --no-install-recommends git python3-dev portaudio19-dev
+
+    PARTYLINE_SRC="/opt/partyline-src"
+    if [ -d "$PARTYLINE_SRC" ]; then
+        git -C "$PARTYLINE_SRC" pull --quiet
+    else
+        git clone --quiet https://github.com/RFnexus/partyline "$PARTYLINE_SRC"
+    fi
+
+    "$RTAK_HOME/venv/bin/pip" install --quiet "$PARTYLINE_SRC"
+
+    mkdir -p "$PARTYLINE_DIR"
+    cp "$(dirname "$0")/rtak_voice/partyline_server.json" "$PARTYLINE_DIR/server.json"
+    chown -R "$RTAK_USER:$RTAK_USER" "$PARTYLINE_DIR"
+
+    cat > /etc/systemd/system/rtak-partyline.service <<PLSVC
+[Unit]
+Description=RTAK Partyline — encrypted group PTT voice
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=$RTAK_USER
+WorkingDirectory=$PARTYLINE_DIR
+ExecStart=$RTAK_HOME/venv/bin/partyline-server --config $PARTYLINE_DIR/server.json
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+PLSVC
+
+    systemctl daemon-reload
+    systemctl enable rtak-partyline
+    echo "  Partyline installed. Server config: $PARTYLINE_DIR/server.json"
+    echo "  Start: sudo systemctl start rtak-partyline"
+    echo "  Hash:  sudo journalctl -u rtak-partyline | grep 'destination hash'"
+else
+    echo "[9/9] Skipping Partyline (INSTALL_PARTYLINE=no)"
+fi
+
+echo ""
 echo "=== Setup complete ==="
 echo ""
 echo "Next steps:"
@@ -473,6 +528,15 @@ echo ""
 echo "  6. Point ATAK clients at this Pi's IP on port 8089 (SSL CoT)"
 echo "     Port 8087 (plain-text) is firewalled — clients must use SSL."
 echo ""
+if [ "$INSTALL_PARTYLINE" = "yes" ]; then
+echo "  7. Start Partyline voice server:"
+echo "     sudo systemctl start rtak-partyline"
+echo "     sudo journalctl -u rtak-partyline | grep 'destination hash'"
+echo "     Share that hash with operators — paste into Sideband/MeshChatX as a contact"
+echo "     Edit rooms/access: sudo nano $PARTYLINE_DIR/server.json"
+echo "     Voice docs: rtak_voice/README.md"
+echo ""
+fi
 echo "Security summary:"
 echo "  LoRa/Reticulum transport:  E2E encrypted (Reticulum default)"
 echo "  ATAK → FTS connection:     TLS mutual auth (client cert required)"
